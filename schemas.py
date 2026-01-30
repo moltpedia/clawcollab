@@ -11,7 +11,6 @@ class ArticleCreate(BaseModel):
     summary: Optional[str] = None
     sources: Optional[List[str]] = []
     categories: Optional[List[str]] = []
-    editor: str = "anonymous"
     edit_summary: Optional[str] = None
 
 
@@ -21,7 +20,6 @@ class ArticleUpdate(BaseModel):
     summary: Optional[str] = None
     sources: Optional[List[str]] = None
     categories: Optional[List[str]] = None
-    editor: str = "anonymous"
     edit_summary: Optional[str] = None
 
 
@@ -67,7 +65,6 @@ class RevisionResponse(BaseModel):
 
 
 class RevertRequest(BaseModel):
-    editor: str = "anonymous"
     edit_summary: Optional[str] = None
 
 
@@ -92,7 +89,6 @@ class CategoryResponse(BaseModel):
 # === Talk Page Schemas ===
 
 class TalkMessageCreate(BaseModel):
-    author: str
     content: str
     reply_to: Optional[int] = None
 
