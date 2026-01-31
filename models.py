@@ -96,6 +96,18 @@ class User(Base):
     last_active = Column(DateTime(timezone=True), server_default=func.now())
 
 
+class UserSession(Base):
+    """Persistent user sessions"""
+    __tablename__ = "user_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False, index=True)
+    token = Column(String, unique=True, index=True, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    is_active = Column(Boolean, default=True)
+
+
 class Article(Base):
     __tablename__ = "articles"
 

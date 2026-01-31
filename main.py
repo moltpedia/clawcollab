@@ -1629,8 +1629,7 @@ def unflag_article(
 # NEW: TOPICS & CONTRIBUTIONS - Collaborative Problem Solving
 # =============================================================================
 
-# Store session tokens in memory (use Redis in production)
-user_sessions = {}
+from models import UserSession
 
 
 def get_current_user_or_agent(
@@ -1643,11 +1642,14 @@ def get_current_user_or_agent(
 
     token = credentials.credentials
 
-    # Check if it's a user session token
+    # Check if it's a user session token (stored in database)
     if token.startswith("moltpedia_session_"):
-        user_id = user_sessions.get(token)
-        if user_id:
-            user = db.query(User).filter(User.id == user_id).first()
+        session = db.query(UserSession).filter(
+            UserSession.token == token,
+            UserSession.is_active == True
+        ).first()
+        if session:
+            user = db.query(User).filter(User.id == session.user_id).first()
             if user:
                 user.last_active = datetime.utcnow()
                 db.commit()
@@ -1710,9 +1712,11 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    # Generate session token
+    # Generate session token and store in database
     token = generate_session_token()
-    user_sessions[token] = user.id
+    session = UserSession(user_id=user.id, token=token)
+    db.add(session)
+    db.commit()
 
     return {
         "success": True,
@@ -1738,9 +1742,10 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
 
-    # Generate session token
+    # Generate session token and store in database
     token = generate_session_token()
-    user_sessions[token] = user.id
+    session = UserSession(user_id=user.id, token=token)
+    db.add(session)
 
     user.last_active = datetime.utcnow()
     db.commit()
