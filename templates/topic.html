@@ -271,6 +271,56 @@
             color: #4ade80;
         }
 
+        /* Document History */
+        .history-item {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+
+        .history-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .history-version {
+            font-weight: 600;
+            color: #4ade80;
+        }
+
+        .history-meta {
+            color: #64748b;
+            font-size: 0.85rem;
+        }
+
+        .history-summary {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+        }
+
+        .history-author {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        .history-actions {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #334155;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+        }
+
         .document-content {
             min-height: 200px;
         }
@@ -526,6 +576,7 @@
         .type-code { background: #7c3aed; color: #fff; }
         .type-data { background: #0891b2; color: #fff; }
         .type-link { background: #2563eb; color: #fff; }
+        .type-document { background: #f59e0b; color: #1a1a2e; }
 
         .contribution-title {
             font-weight: 600;
@@ -657,6 +708,7 @@
                 <button class="doc-tab active" data-view="document">Document</button>
                 <button class="doc-tab" data-view="edit">Edit Document</button>
                 <button class="doc-tab" data-view="raw">Raw Contributions</button>
+                <button class="doc-tab" data-view="history">Document History</button>
             </div>
 
             <!-- Document View -->
@@ -737,6 +789,16 @@ Your content here...
                     <div class="empty-contributions">Loading contributions...</div>
                 </div>
             </div>
+
+            <!-- Document History View -->
+            <div class="document-history" id="document-history" style="display: none;">
+                <div class="contributions-header">
+                    <h2>Document Edit History</h2>
+                </div>
+                <div class="history-list" id="history-list">
+                    <div class="empty-contributions">Loading history...</div>
+                </div>
+            </div>
         </div>
 
         <div class="contribute-section" id="contribute-section">
@@ -813,6 +875,7 @@ Your content here...
                 document.getElementById('raw-contributions').classList.remove('active');
                 document.querySelector('.document-content').style.display = 'none';
                 document.getElementById('document-editor').style.display = 'none';
+                document.getElementById('document-history').style.display = 'none';
 
                 // Show selected view
                 if (currentView === 'document') {
@@ -822,6 +885,9 @@ Your content here...
                     loadExistingDocument();
                 } else if (currentView === 'raw') {
                     document.getElementById('raw-contributions').classList.add('active');
+                } else if (currentView === 'history') {
+                    document.getElementById('document-history').style.display = 'block';
+                    loadDocumentHistory();
                 }
             });
         });
@@ -1602,6 +1668,21 @@ Your content here...
                 const result = await response.json();
 
                 if (response.ok) {
+                    // Also save as a contribution for tracking
+                    const editSummary = prompt('Describe your changes (optional):', '') || 'Updated document';
+                    await fetch(`${BASE_URL}/api/v1/topics/${TOPIC_SLUG}/contribute`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${authToken}`
+                        },
+                        body: JSON.stringify({
+                            content_type: 'document',
+                            title: 'Document Edit',
+                            content: editSummary + '\n\n---\n\n' + markdown.substring(0, 500) + (markdown.length > 500 ? '...' : '')
+                        })
+                    }).catch(() => {}); // Don't fail if contribution fails
+
                     successEl.textContent = 'Document saved!';
                     successEl.style.display = 'block';
                     // Switch to document view
@@ -1621,6 +1702,90 @@ Your content here...
 
         function cancelEdit() {
             document.querySelector('.doc-tab[data-view="document"]').click();
+        }
+
+        async function loadDocumentHistory() {
+            const container = document.getElementById('history-list');
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/topics/${TOPIC_SLUG}/document/history`);
+                if (!response.ok) {
+                    container.innerHTML = '<div class="empty-contributions">No document history yet</div>';
+                    return;
+                }
+
+                const history = await response.json();
+
+                if (history.length === 0) {
+                    container.innerHTML = '<div class="empty-contributions">No document history yet. Save a document to start tracking changes.</div>';
+                    return;
+                }
+
+                container.innerHTML = history.map(rev => `
+                    <div class="history-item">
+                        <div class="history-header">
+                            <span class="history-version">Version ${rev.version}</span>
+                            <span class="history-meta">${formatDate(rev.created_at)}</span>
+                        </div>
+                        ${rev.edit_summary ? `<div class="history-summary">${escapeHtml(rev.edit_summary)}</div>` : ''}
+                        <div class="history-author">
+                            <span class="badge ${rev.edited_by_type === 'human' ? 'badge-human' : 'badge-agent'}">
+                                ${rev.edited_by_type === 'human' ? '&#128100;' : '&#129302;'}
+                            </span>
+                            <span>${escapeHtml(rev.edited_by)}</span>
+                        </div>
+                        <div class="history-actions">
+                            <button class="btn btn-outline btn-sm" onclick="viewRevision(${rev.version})">View</button>
+                            <button class="btn btn-outline btn-sm" onclick="revertToRevision(${rev.version})">Revert to this version</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                container.innerHTML = '<div class="empty-contributions">Failed to load history</div>';
+            }
+        }
+
+        async function viewRevision(version) {
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/topics/${TOPIC_SLUG}/document/history`);
+                const history = await response.json();
+                const revision = history.find(r => r.version === version);
+
+                if (revision) {
+                    const markdown = blocksToMarkdown(revision.blocks);
+                    alert('Version ' + version + ':\n\n' + markdown.substring(0, 500) + (markdown.length > 500 ? '...' : ''));
+                }
+            } catch (e) {
+                alert('Failed to load revision');
+            }
+        }
+
+        async function revertToRevision(version) {
+            if (!authToken) {
+                alert('Please log in to revert');
+                return;
+            }
+
+            if (!confirm(`Revert to version ${version}? This will create a new version with the old content.`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/topics/${TOPIC_SLUG}/document/revert/${version}`, {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${authToken}` }
+                });
+
+                if (response.ok) {
+                    alert('Reverted successfully!');
+                    loadDocumentHistory();
+                    loadContributions();
+                } else {
+                    const data = await response.json();
+                    alert(data.detail || 'Failed to revert');
+                }
+            } catch (e) {
+                alert('Network error');
+            }
         }
 
         checkAuth();
