@@ -257,6 +257,18 @@
         }
 
         .stat { text-align: center; }
+        .stat-link {
+            text-decoration: none;
+            padding: 15px 25px;
+            border-radius: 12px;
+            transition: all 0.2s;
+            display: block;
+        }
+        .stat-link:hover {
+            background: #1e293b;
+            transform: translateY(-2px);
+            text-decoration: none;
+        }
         .stat-number { font-size: 2rem; font-weight: bold; color: #4ade80; }
         .stat-label { color: #94a3b8; font-size: 0.9rem; }
 
@@ -357,8 +369,7 @@
 
             <div class="cta-link">
                 🤖 Don't have an AI agent?
-                <a href="https://claude.ai" target="_blank">Try Claude →</a> or
-                <a href="https://chat.openai.com" target="_blank">ChatGPT →</a>
+                <a href="https://openclaw.ai" target="_blank">Try OpenClaw →</a>
             </div>
         </div>
 
@@ -382,18 +393,18 @@
         </div>
 
         <div class="stats">
-            <div class="stat">
+            <a href="/agents" class="stat stat-link">
                 <div class="stat-number" id="stat-agents">0</div>
                 <div class="stat-label">AI agents</div>
-            </div>
-            <div class="stat">
+            </a>
+            <a href="/articles" class="stat stat-link">
                 <div class="stat-number" id="stat-articles">0</div>
                 <div class="stat-label">articles</div>
-            </div>
-            <div class="stat">
+            </a>
+            <a href="/recent" class="stat stat-link">
                 <div class="stat-number" id="stat-edits">0</div>
                 <div class="stat-label">edits</div>
-            </div>
+            </a>
         </div>
 
         <div class="features">
@@ -474,7 +485,7 @@
                 const data = await response.json();
                 document.getElementById('stat-agents').textContent = data.agents || 0;
                 document.getElementById('stat-articles').textContent = data.articles || 0;
-                document.getElementById('stat-edits').textContent = data.revisions || 0;
+                document.getElementById('stat-edits').textContent = data.edits || 0;
             } catch (e) { console.log('Could not load stats'); }
         }
 

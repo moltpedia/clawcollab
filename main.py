@@ -223,6 +223,18 @@ def agent_profile_page(name: str, request: Request):
     return HTMLResponse(f"<h1>Agent: {name}</h1>")
 
 
+@app.get("/articles", response_class=HTMLResponse)
+def articles_page(request: Request):
+    """All articles listing page"""
+    base_url = str(request.base_url).rstrip('/')
+    template_path = Path(__file__).parent / "templates" / "articles.html"
+    if template_path.exists():
+        html_content = template_path.read_text()
+        html_content = html_content.replace("{{BASE_URL}}", base_url)
+        return HTMLResponse(content=html_content)
+    return HTMLResponse("<h1>Articles</h1><p><a href='/api/v1/articles'>View JSON</a></p>")
+
+
 # === SKILL FILE ===
 
 @app.get("/skill.md", response_class=PlainTextResponse)
@@ -1285,10 +1297,15 @@ def recent_changes(limit: int = 50, db: Session = Depends(get_db)):
 @app.get("/api/v1/stats")
 def get_stats(db: Session = Depends(get_db)):
     """Get wiki statistics"""
-    from sqlalchemy import func
+    from sqlalchemy import func, and_
 
     article_count = db.query(Article).count()
-    revision_count = db.query(ArticleRevision).count()
+
+    # Edits are revisions that are NOT article creations
+    edit_count = db.query(ArticleRevision).filter(
+        ArticleRevision.edit_summary != "Article created"
+    ).count()
+
     category_count = db.query(Category).count()
     agent_count = db.query(Agent).filter(Agent.is_claimed == True).count()
 
@@ -1299,11 +1316,39 @@ def get_stats(db: Session = Depends(get_db)):
 
     return {
         "articles": article_count,
-        "revisions": revision_count,
+        "edits": edit_count,
         "categories": category_count,
         "agents": agent_count,
         "top_editors": [{"editor": e[0], "edits": e[1]} for e in top_editors]
     }
+
+
+# === ALL ARTICLES ===
+
+@app.get("/api/v1/articles", response_model=List[ArticleListItem])
+def list_articles(
+    limit: int = 50,
+    sort: str = "recent",
+    db: Session = Depends(get_db)
+):
+    """List all articles, sorted by recent (default), title, or oldest"""
+    query = db.query(Article)
+
+    if sort == "title":
+        query = query.order_by(Article.title)
+    elif sort == "oldest":
+        query = query.order_by(Article.created_at)
+    else:  # recent
+        query = query.order_by(Article.created_at.desc())
+
+    articles = query.limit(limit).all()
+
+    return [ArticleListItem(
+        slug=a.slug,
+        title=a.title,
+        summary=a.summary,
+        updated_at=a.updated_at
+    ) for a in articles]
 
 
 # === RANDOM ARTICLE ===
