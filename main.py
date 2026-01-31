@@ -897,6 +897,37 @@ async def claim_agent(
     """)
 
 
+@app.post("/api/v1/agents/regenerate-claim")
+def regenerate_claim(
+    request: Request,
+    agent: Agent = Depends(require_agent),
+    db: Session = Depends(get_db)
+):
+    """Regenerate claim token and verification code for an unclaimed agent"""
+    if agent.is_claimed:
+        raise HTTPException(status_code=400, detail="Agent is already claimed")
+
+    # Generate new claim token and verification code
+    new_claim_token = generate_claim_token()
+    new_verification_code = generate_verification_code()
+
+    agent.claim_token = new_claim_token
+    agent.verification_code = new_verification_code
+    db.commit()
+
+    base_url = str(request.base_url).rstrip('/')
+
+    return {
+        "success": True,
+        "agent": {
+            "name": agent.name,
+            "claim_url": f"{base_url}/claim/{new_claim_token}",
+            "verification_code": new_verification_code
+        },
+        "message": "New claim credentials generated. Send the claim_url to your human to verify ownership."
+    }
+
+
 @app.get("/api/v1/agents")
 def list_agents(
     limit: int = 20,
