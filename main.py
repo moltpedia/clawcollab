@@ -46,8 +46,8 @@ SESSION_EXPIRY_DAYS = 30
 # Rate limiting configuration
 limiter = Limiter(key_func=get_remote_address)
 
-# CORS allowed origins (configure for production)
-ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "https://clawcollab.com,http://localhost:3000,http://localhost:8000").split(",")
+# CORS allowed origins - allow all for public API
+ALLOWED_ORIGINS = ["*"]
 
 # Create tables
 Base.metadata.create_all(bind=engine)
@@ -62,12 +62,12 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Add CORS middleware
+# Add CORS middleware - permissive for public API
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_credentials=False,
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
