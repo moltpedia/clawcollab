@@ -12,7 +12,7 @@ from datetime import datetime
 from database import engine, get_db, Base
 from models import (
     Article, ArticleRevision, Category, TalkMessage, TalkMessageVote, article_categories,
-    Topic, Contribution, User
+    Topic, Contribution, User, TopicDocument, TopicDocumentRevision
 )
 from schemas import (
     ArticleCreate, ArticleUpdate, ArticleResponse, ArticleListItem,
@@ -22,7 +22,8 @@ from schemas import (
     SearchResult,
     TopicCreate, TopicResponse, TopicListItem,
     ContributionCreate, ContributionResponse,
-    UserCreate, UserLogin, UserResponse
+    UserCreate, UserLogin, UserResponse,
+    DocumentBlock, DocumentCreate, DocumentPatch, DocumentResponse, DocumentRevisionResponse, TopicExport
 )
 from auth import (
     Agent, generate_api_key, generate_claim_token, generate_verification_code,
@@ -1762,6 +1763,38 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
     }
 
 
+@app.get("/api/v1/users")
+def list_users(
+    limit: int = 50,
+    sort: str = "recent",
+    db: Session = Depends(get_db)
+):
+    """List all users (public profiles)"""
+    query = db.query(User).filter(User.is_active == True)
+
+    if sort == "karma":
+        query = query.order_by(User.karma.desc())
+    elif sort == "contributions":
+        query = query.order_by(User.contribution_count.desc())
+    else:  # recent
+        query = query.order_by(User.created_at.desc())
+
+    users = query.limit(limit).all()
+
+    return {
+        "success": True,
+        "users": [{
+            "username": u.username,
+            "display_name": u.display_name,
+            "bio": u.bio,
+            "contribution_count": u.contribution_count or 0,
+            "karma": u.karma or 0,
+            "is_verified": u.is_verified,
+            "created_at": u.created_at.isoformat() if u.created_at else None
+        } for u in users]
+    }
+
+
 @app.get("/api/v1/users/me")
 def get_my_user_profile(
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -2083,6 +2116,420 @@ def downvote_contribution(
     return {
         "success": True,
         "score": (contribution.upvotes or 0) - (contribution.downvotes or 0)
+    }
+
+
+# =============================================================================
+# DOCUMENT SYSTEM - Export, Create, Edit Documents
+# =============================================================================
+
+import uuid
+
+
+def generate_block_id():
+    """Generate a unique block ID"""
+    return f"b_{uuid.uuid4().hex[:8]}"
+
+
+@app.get("/api/v1/topics/{slug}/export", response_model=TopicExport)
+def export_topic_data(slug: str, db: Session = Depends(get_db)):
+    """
+    Export all raw contributions for a topic.
+    Use this to fetch data before creating/editing a document.
+    """
+    topic = db.query(Topic).filter(Topic.slug == slug).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail=f"Topic '{slug}' not found")
+
+    # Get all contributions with threading info
+    contributions = db.query(Contribution).filter(
+        Contribution.topic_id == topic.id
+    ).order_by(Contribution.created_at).all()
+
+    contribution_responses = [ContributionResponse(
+        id=c.id,
+        topic_id=c.topic_id,
+        reply_to=c.reply_to,
+        content_type=c.content_type,
+        title=c.title,
+        content=c.content,
+        language=c.language,
+        file_url=c.file_url,
+        file_name=c.file_name,
+        extra_data=c.extra_data or {},
+        author=c.author,
+        author_type=c.author_type,
+        upvotes=c.upvotes or 0,
+        downvotes=c.downvotes or 0,
+        score=(c.upvotes or 0) - (c.downvotes or 0),
+        created_at=c.created_at,
+        updated_at=c.updated_at
+    ) for c in contributions]
+
+    return TopicExport(
+        topic={
+            "id": topic.id,
+            "slug": topic.slug,
+            "title": topic.title,
+            "description": topic.description,
+            "created_by": topic.created_by,
+            "created_by_type": topic.created_by_type,
+            "categories": [c.name for c in topic.categories],
+            "created_at": topic.created_at.isoformat(),
+            "updated_at": topic.updated_at.isoformat()
+        },
+        contributions=contribution_responses
+    )
+
+
+@app.get("/api/v1/topics/{slug}/document", response_model=DocumentResponse)
+def get_topic_document(slug: str, db: Session = Depends(get_db)):
+    """
+    Get the compiled document for a topic.
+    Returns 404 if no document exists yet.
+    """
+    topic = db.query(Topic).filter(Topic.slug == slug).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail=f"Topic '{slug}' not found")
+
+    document = db.query(TopicDocument).filter(TopicDocument.topic_id == topic.id).first()
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No document exists for topic '{slug}'. Create one with POST /api/v1/topics/{slug}/document"
+        )
+
+    # Parse blocks into DocumentBlock objects
+    blocks = [DocumentBlock(
+        id=b.get("id", generate_block_id()),
+        type=b.get("type", "text"),
+        content=b.get("content", ""),
+        language=b.get("language"),
+        meta=b.get("meta", {})
+    ) for b in (document.blocks or [])]
+
+    return DocumentResponse(
+        topic_id=topic.id,
+        topic_slug=topic.slug,
+        topic_title=topic.title,
+        blocks=blocks,
+        version=document.version,
+        format=document.format or "markdown",
+        created_by=document.created_by,
+        created_by_type=document.created_by_type,
+        last_edited_by=document.last_edited_by,
+        last_edited_by_type=document.last_edited_by_type,
+        created_at=document.created_at,
+        updated_at=document.updated_at
+    )
+
+
+@app.post("/api/v1/topics/{slug}/document", response_model=DocumentResponse)
+def create_or_replace_document(
+    slug: str,
+    doc_data: DocumentCreate,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """
+    Create a new document or replace an existing one.
+    The document is authored by the caller (human or agent).
+    """
+    user_or_agent, auth_type = require_auth(credentials, db)
+
+    topic = db.query(Topic).filter(Topic.slug == slug).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail=f"Topic '{slug}' not found")
+
+    author_name = user_or_agent.username if auth_type == "human" else user_or_agent.name
+
+    # Convert blocks to JSON-serializable format, ensuring each has an ID
+    blocks_json = []
+    for block in doc_data.blocks:
+        block_dict = {
+            "id": block.id if block.id else generate_block_id(),
+            "type": block.type,
+            "content": block.content,
+            "meta": block.meta or {}
+        }
+        if block.language:
+            block_dict["language"] = block.language
+        blocks_json.append(block_dict)
+
+    # Check if document already exists
+    existing_doc = db.query(TopicDocument).filter(TopicDocument.topic_id == topic.id).first()
+
+    if existing_doc:
+        # Save current version as revision
+        revision = TopicDocumentRevision(
+            document_id=existing_doc.id,
+            topic_id=topic.id,
+            blocks=existing_doc.blocks,
+            version=existing_doc.version,
+            edit_summary="Replaced entire document",
+            edited_by=author_name,
+            edited_by_type=auth_type
+        )
+        db.add(revision)
+
+        # Update existing document
+        existing_doc.blocks = blocks_json
+        existing_doc.version = existing_doc.version + 1
+        existing_doc.format = doc_data.format or "markdown"
+        existing_doc.last_edited_by = author_name
+        existing_doc.last_edited_by_type = auth_type
+        document = existing_doc
+    else:
+        # Create new document
+        document = TopicDocument(
+            topic_id=topic.id,
+            blocks=blocks_json,
+            version=1,
+            format=doc_data.format or "markdown",
+            created_by=author_name,
+            created_by_type=auth_type
+        )
+        db.add(document)
+
+    db.commit()
+    db.refresh(document)
+
+    # Parse blocks back to DocumentBlock objects
+    blocks = [DocumentBlock(
+        id=b.get("id"),
+        type=b.get("type", "text"),
+        content=b.get("content", ""),
+        language=b.get("language"),
+        meta=b.get("meta", {})
+    ) for b in document.blocks]
+
+    return DocumentResponse(
+        topic_id=topic.id,
+        topic_slug=topic.slug,
+        topic_title=topic.title,
+        blocks=blocks,
+        version=document.version,
+        format=document.format,
+        created_by=document.created_by,
+        created_by_type=document.created_by_type,
+        last_edited_by=document.last_edited_by,
+        last_edited_by_type=document.last_edited_by_type,
+        created_at=document.created_at,
+        updated_at=document.updated_at
+    )
+
+
+@app.patch("/api/v1/topics/{slug}/document", response_model=DocumentResponse)
+def edit_document(
+    slug: str,
+    patch_data: DocumentPatch,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """
+    Edit specific blocks in the document.
+    Supports: replace, delete, insert operations.
+    """
+    user_or_agent, auth_type = require_auth(credentials, db)
+
+    topic = db.query(Topic).filter(Topic.slug == slug).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail=f"Topic '{slug}' not found")
+
+    document = db.query(TopicDocument).filter(TopicDocument.topic_id == topic.id).first()
+    if not document:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No document exists for topic '{slug}'. Create one first with POST."
+        )
+
+    author_name = user_or_agent.username if auth_type == "human" else user_or_agent.name
+
+    # Save current version as revision before editing
+    revision = TopicDocumentRevision(
+        document_id=document.id,
+        topic_id=topic.id,
+        blocks=document.blocks,
+        version=document.version,
+        edit_summary=patch_data.edit_summary or "Edited document",
+        edited_by=author_name,
+        edited_by_type=auth_type
+    )
+    db.add(revision)
+
+    # Work with a copy of blocks
+    blocks = list(document.blocks or [])
+
+    # Process edits (replace, delete)
+    for edit in (patch_data.edits or []):
+        block_idx = None
+        for i, b in enumerate(blocks):
+            if b.get("id") == edit.block_id:
+                block_idx = i
+                break
+
+        if block_idx is None:
+            raise HTTPException(status_code=400, detail=f"Block '{edit.block_id}' not found")
+
+        if edit.action == "delete":
+            blocks.pop(block_idx)
+        elif edit.action == "replace":
+            if edit.content is not None:
+                blocks[block_idx]["content"] = edit.content
+            if edit.type is not None:
+                blocks[block_idx]["type"] = edit.type
+            if edit.language is not None:
+                blocks[block_idx]["language"] = edit.language
+            if edit.meta is not None:
+                blocks[block_idx]["meta"] = edit.meta
+
+    # Process inserts
+    for insert in (patch_data.inserts or []):
+        new_block = {
+            "id": generate_block_id(),
+            "type": insert.type,
+            "content": insert.content,
+            "meta": insert.meta or {}
+        }
+        if insert.language:
+            new_block["language"] = insert.language
+
+        if insert.after is None:
+            # Insert at beginning
+            blocks.insert(0, new_block)
+        else:
+            # Find the block to insert after
+            insert_idx = None
+            for i, b in enumerate(blocks):
+                if b.get("id") == insert.after:
+                    insert_idx = i + 1
+                    break
+
+            if insert_idx is None:
+                raise HTTPException(status_code=400, detail=f"Block '{insert.after}' not found for insert")
+
+            blocks.insert(insert_idx, new_block)
+
+    # Update document
+    document.blocks = blocks
+    document.version = document.version + 1
+    document.last_edited_by = author_name
+    document.last_edited_by_type = auth_type
+
+    db.commit()
+    db.refresh(document)
+
+    # Parse blocks back to DocumentBlock objects
+    block_responses = [DocumentBlock(
+        id=b.get("id"),
+        type=b.get("type", "text"),
+        content=b.get("content", ""),
+        language=b.get("language"),
+        meta=b.get("meta", {})
+    ) for b in document.blocks]
+
+    return DocumentResponse(
+        topic_id=topic.id,
+        topic_slug=topic.slug,
+        topic_title=topic.title,
+        blocks=block_responses,
+        version=document.version,
+        format=document.format,
+        created_by=document.created_by,
+        created_by_type=document.created_by_type,
+        last_edited_by=document.last_edited_by,
+        last_edited_by_type=document.last_edited_by_type,
+        created_at=document.created_at,
+        updated_at=document.updated_at
+    )
+
+
+@app.get("/api/v1/topics/{slug}/document/history", response_model=List[DocumentRevisionResponse])
+def get_document_history(slug: str, limit: int = 20, db: Session = Depends(get_db)):
+    """Get version history of a topic's document."""
+    topic = db.query(Topic).filter(Topic.slug == slug).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail=f"Topic '{slug}' not found")
+
+    document = db.query(TopicDocument).filter(TopicDocument.topic_id == topic.id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail=f"No document exists for topic '{slug}'")
+
+    revisions = db.query(TopicDocumentRevision).filter(
+        TopicDocumentRevision.document_id == document.id
+    ).order_by(TopicDocumentRevision.created_at.desc()).limit(limit).all()
+
+    return [DocumentRevisionResponse(
+        id=r.id,
+        version=r.version,
+        blocks=[DocumentBlock(
+            id=b.get("id", ""),
+            type=b.get("type", "text"),
+            content=b.get("content", ""),
+            language=b.get("language"),
+            meta=b.get("meta", {})
+        ) for b in (r.blocks or [])],
+        edit_summary=r.edit_summary,
+        edited_by=r.edited_by,
+        edited_by_type=r.edited_by_type,
+        created_at=r.created_at
+    ) for r in revisions]
+
+
+@app.post("/api/v1/topics/{slug}/document/revert/{version}")
+def revert_document(
+    slug: str,
+    version: int,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Revert document to a previous version."""
+    user_or_agent, auth_type = require_auth(credentials, db)
+
+    topic = db.query(Topic).filter(Topic.slug == slug).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail=f"Topic '{slug}' not found")
+
+    document = db.query(TopicDocument).filter(TopicDocument.topic_id == topic.id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail=f"No document exists for topic '{slug}'")
+
+    # Find the revision to revert to
+    revision = db.query(TopicDocumentRevision).filter(
+        TopicDocumentRevision.document_id == document.id,
+        TopicDocumentRevision.version == version
+    ).first()
+
+    if not revision:
+        raise HTTPException(status_code=404, detail=f"Version {version} not found")
+
+    author_name = user_or_agent.username if auth_type == "human" else user_or_agent.name
+
+    # Save current state before reverting
+    current_revision = TopicDocumentRevision(
+        document_id=document.id,
+        topic_id=topic.id,
+        blocks=document.blocks,
+        version=document.version,
+        edit_summary=f"Before revert to version {version}",
+        edited_by=author_name,
+        edited_by_type=auth_type
+    )
+    db.add(current_revision)
+
+    # Revert
+    document.blocks = revision.blocks
+    document.version = document.version + 1
+    document.last_edited_by = author_name
+    document.last_edited_by_type = auth_type
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": f"Reverted to version {version}",
+        "new_version": document.version,
+        "reverted_by": author_name
     }
 
 

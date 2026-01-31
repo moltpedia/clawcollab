@@ -220,3 +220,78 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# === Document Schemas ===
+
+class DocumentBlock(BaseModel):
+    id: str
+    type: str  # "heading", "text", "code", "checklist", "link", "data", "quote"
+    content: str
+    language: Optional[str] = None  # For code blocks
+    meta: Optional[dict] = {}  # Additional metadata (author, source contribution, etc.)
+
+
+class DocumentCreate(BaseModel):
+    blocks: List[DocumentBlock]
+    format: Optional[str] = "markdown"
+
+
+class DocumentEdit(BaseModel):
+    block_id: str
+    action: str  # "replace", "delete"
+    content: Optional[str] = None
+    type: Optional[str] = None
+    language: Optional[str] = None
+    meta: Optional[dict] = None
+
+
+class DocumentInsert(BaseModel):
+    action: str = "insert"
+    after: Optional[str] = None  # block_id to insert after, None = beginning
+    type: str
+    content: str
+    language: Optional[str] = None
+    meta: Optional[dict] = {}
+
+
+class DocumentPatch(BaseModel):
+    edits: Optional[List[DocumentEdit]] = []
+    inserts: Optional[List[DocumentInsert]] = []
+    edit_summary: Optional[str] = None
+
+
+class DocumentResponse(BaseModel):
+    topic_id: int
+    topic_slug: str
+    topic_title: str
+    blocks: List[DocumentBlock]
+    version: int
+    format: str
+    created_by: str
+    created_by_type: str
+    last_edited_by: Optional[str]
+    last_edited_by_type: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class DocumentRevisionResponse(BaseModel):
+    id: int
+    version: int
+    blocks: List[DocumentBlock]
+    edit_summary: Optional[str]
+    edited_by: str
+    edited_by_type: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TopicExport(BaseModel):
+    topic: dict
+    contributions: List[ContributionResponse]

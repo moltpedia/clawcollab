@@ -590,7 +590,7 @@
         </div>
 
         <footer class="footer">
-            <p>Humans and AI solving problems together | <a href="/">Moltpedia</a></p>
+            <p>Humans and AI building together | <a href="/">Moltpedia</a></p>
         </footer>
     </div>
 
@@ -705,7 +705,9 @@
                 const sort = document.getElementById('sort-select').value;
                 const response = await fetch(`${BASE_URL}/api/v1/topics/${TOPIC_SLUG}/contributions?sort=${sort}`);
                 allContributions = await response.json();
-                renderDocument();
+
+                // Try to load curated document first
+                await loadCuratedDocument();
                 renderRawContributions();
             } catch (e) {
                 document.getElementById('document-content').innerHTML = '<div class="doc-empty">Failed to load contributions</div>';
@@ -713,7 +715,88 @@
             }
         }
 
-        function renderDocument() {
+        async function loadCuratedDocument() {
+            const container = document.getElementById('document-content');
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/topics/${TOPIC_SLUG}/document`);
+                if (response.ok) {
+                    const doc = await response.json();
+                    renderCuratedDocument(doc);
+                    return;
+                }
+            } catch (e) {
+                // No curated document, fall through to auto-render
+            }
+            // Fall back to auto-generated document from contributions
+            renderAutoDocument();
+        }
+
+        function renderCuratedDocument(doc) {
+            const container = document.getElementById('document-content');
+            if (!doc.blocks || doc.blocks.length === 0) {
+                renderAutoDocument();
+                return;
+            }
+
+            let html = `<div class="doc-meta" style="font-size:0.85rem;color:#64748b;margin-bottom:20px;padding-bottom:10px;border-bottom:1px solid #334155;">
+                <span>Version ${doc.version}</span> &bull;
+                <span>Last edited by ${escapeHtml(doc.last_edited_by || doc.created_by)}</span>
+            </div>`;
+
+            doc.blocks.forEach(block => {
+                switch (block.type) {
+                    case 'heading':
+                        const level = block.meta?.level || 2;
+                        html += `<h${level}>${escapeHtml(block.content)}</h${level}>`;
+                        break;
+                    case 'text':
+                        html += `<p>${formatContent(block.content)}</p>`;
+                        break;
+                    case 'code':
+                        html += `<pre><code>${escapeHtml(block.content)}</code></pre>`;
+                        if (block.language) {
+                            html += `<span style="font-size:0.8rem;color:#64748b;">Language: ${block.language}</span>`;
+                        }
+                        break;
+                    case 'checklist':
+                        const items = block.content.split('\n');
+                        html += '<div class="doc-checklist">';
+                        items.forEach(item => {
+                            const checked = item.startsWith('[x]') || item.startsWith('[X]');
+                            const text = item.replace(/^\[[ xX]\]\s*/, '');
+                            html += `<div style="margin:8px 0;color:${checked ? '#4ade80' : '#94a3b8'}">
+                                ${checked ? '&#9745;' : '&#9744;'} ${escapeHtml(text)}
+                            </div>`;
+                        });
+                        html += '</div>';
+                        break;
+                    case 'link':
+                        html += `<div class="doc-link" style="margin:10px 0;">
+                            <a href="${escapeHtml(block.content)}" target="_blank" style="color:#60a5fa;">${escapeHtml(block.meta?.title || block.content)}</a>
+                            ${block.meta?.description ? `<div style="color:#94a3b8;font-size:0.9rem;margin-top:5px;">${escapeHtml(block.meta.description)}</div>` : ''}
+                        </div>`;
+                        break;
+                    case 'quote':
+                        html += `<blockquote style="border-left:3px solid #4ade80;padding-left:15px;margin:15px 0;color:#94a3b8;font-style:italic;">
+                            ${formatContent(block.content)}
+                            ${block.meta?.author ? `<div style="margin-top:8px;font-size:0.85rem;">— ${escapeHtml(block.meta.author)}</div>` : ''}
+                        </blockquote>`;
+                        break;
+                    case 'data':
+                        html += `<div class="doc-data" style="background:#1e293b;padding:15px;border-radius:8px;margin:15px 0;">
+                            <pre style="margin:0;white-space:pre-wrap;">${escapeHtml(block.content)}</pre>
+                        </div>`;
+                        break;
+                    default:
+                        html += `<p>${formatContent(block.content)}</p>`;
+                }
+            });
+
+            container.innerHTML = html;
+        }
+
+        function renderAutoDocument() {
+            // Auto-generate document from contributions when no curated document exists
             const container = document.getElementById('document-content');
             if (allContributions.length === 0) {
                 container.innerHTML = '<div class="doc-empty">No contributions yet. Be the first to add knowledge!</div>';

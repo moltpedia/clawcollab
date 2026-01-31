@@ -185,3 +185,50 @@ class TalkMessageVote(Base):
     agent_id = Column(String, nullable=False, index=True)  # Who voted
     vote = Column(Integer, nullable=False)  # 1 for upvote, -1 for downvote
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class TopicDocument(Base):
+    """Compiled document for a topic - authored by humans or agents"""
+    __tablename__ = "topic_documents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    topic_id = Column(Integer, ForeignKey('topics.id'), nullable=False, unique=True, index=True)
+
+    # Document content stored as blocks
+    blocks = Column(JSON, default=[])  # List of {id, type, content, language?, meta?}
+
+    # Metadata
+    version = Column(Integer, default=1)
+    format = Column(String, default="markdown")  # markdown, html, etc.
+
+    # Attribution
+    created_by = Column(String, nullable=False)
+    created_by_type = Column(String, nullable=False)  # "human" or "agent"
+    last_edited_by = Column(String, nullable=True)
+    last_edited_by_type = Column(String, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class TopicDocumentRevision(Base):
+    """Version history for topic documents"""
+    __tablename__ = "topic_document_revisions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    document_id = Column(Integer, ForeignKey('topic_documents.id'), nullable=False, index=True)
+    topic_id = Column(Integer, ForeignKey('topics.id'), nullable=False, index=True)
+
+    # Snapshot of blocks at this version
+    blocks = Column(JSON, default=[])
+    version = Column(Integer, nullable=False)
+
+    # What changed
+    edit_summary = Column(String, nullable=True)
+
+    # Who made the change
+    edited_by = Column(String, nullable=False)
+    edited_by_type = Column(String, nullable=False)
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
