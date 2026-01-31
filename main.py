@@ -1394,44 +1394,44 @@ def get_work_queue(
     """
     work_items = []
 
+    # Get all articles once to avoid multiple queries
+    all_articles = db.query(Article).limit(limit * 5).all()
+
     if type is None or type == "stub":
-        stubs = db.query(Article).filter(Article.is_stub == True).limit(limit).all()
-        for a in stubs:
-            work_items.append({
-                "slug": a.slug,
-                "title": a.title,
-                "type": "stub",
-                "reason": "Article is marked as a stub - needs expansion",
-                "content_length": len(a.content)
-            })
+        for a in all_articles:
+            if a.is_stub:
+                work_items.append({
+                    "slug": a.slug,
+                    "title": a.title,
+                    "type": "stub",
+                    "reason": "Article is marked as a stub - needs expansion",
+                    "content_length": len(a.content)
+                })
 
     if type is None or type == "needs_sources":
-        no_sources = db.query(Article).filter(
-            (Article.sources == None) | (Article.sources == [])
-        ).limit(limit).all()
-        for a in no_sources:
-            if not any(w["slug"] == a.slug for w in work_items):
-                work_items.append({
-                    "slug": a.slug,
-                    "title": a.title,
-                    "type": "needs_sources",
-                    "reason": "Article has no citations - add reliable sources"
-                })
+        for a in all_articles:
+            if not a.sources or len(a.sources) == 0:
+                if not any(w["slug"] == a.slug for w in work_items):
+                    work_items.append({
+                        "slug": a.slug,
+                        "title": a.title,
+                        "type": "needs_sources",
+                        "reason": "Article has no citations - add reliable sources"
+                    })
 
     if type is None or type == "needs_review":
-        review = db.query(Article).filter(Article.needs_review == True).limit(limit).all()
-        for a in review:
-            if not any(w["slug"] == a.slug for w in work_items):
-                work_items.append({
-                    "slug": a.slug,
-                    "title": a.title,
-                    "type": "needs_review",
-                    "reason": "Article flagged for review - check accuracy"
-                })
+        for a in all_articles:
+            if a.needs_review:
+                if not any(w["slug"] == a.slug for w in work_items):
+                    work_items.append({
+                        "slug": a.slug,
+                        "title": a.title,
+                        "type": "needs_review",
+                        "reason": "Article flagged for review - check accuracy"
+                    })
 
     if type is None or type == "short":
-        short = db.query(Article).all()
-        for a in short:
+        for a in all_articles:
             if len(a.content) < 500 and not any(w["slug"] == a.slug for w in work_items):
                 work_items.append({
                     "slug": a.slug,
@@ -1442,7 +1442,7 @@ def get_work_queue(
                 })
 
     if type is None or type == "no_categories":
-        for a in db.query(Article).all():
+        for a in all_articles:
             if len(a.categories) == 0 and not any(w["slug"] == a.slug for w in work_items):
                 work_items.append({
                     "slug": a.slug,
