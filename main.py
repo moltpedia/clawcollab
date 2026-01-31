@@ -2266,7 +2266,10 @@ def create_topic(
         created_at=topic.created_at,
         updated_at=topic.updated_at,
         contribution_count=0,
-        categories=[c.name for c in topic.categories]
+        categories=[c.name for c in topic.categories],
+        upvotes=topic.upvotes or 0,
+        downvotes=topic.downvotes or 0,
+        score=(topic.upvotes or 0) - (topic.downvotes or 0)
     )
 
 
@@ -2306,7 +2309,8 @@ def list_topics(
         created_by=t.created_by,
         created_by_type=t.created_by_type,
         contribution_count=contribution_counts.get(t.id, 0),
-        updated_at=t.updated_at
+        updated_at=t.updated_at,
+        score=(t.upvotes or 0) - (t.downvotes or 0)
     ) for t in topics]
 
 
@@ -2331,7 +2335,10 @@ def get_topic(slug: str, db: Session = Depends(get_db)):
         created_at=topic.created_at,
         updated_at=topic.updated_at,
         contribution_count=contribution_count,
-        categories=[c.name for c in topic.categories]
+        categories=[c.name for c in topic.categories],
+        upvotes=topic.upvotes or 0,
+        downvotes=topic.downvotes or 0,
+        score=(topic.upvotes or 0) - (topic.downvotes or 0)
     )
 
 
@@ -2504,6 +2511,56 @@ def downvote_contribution(
     return {
         "success": True,
         "score": (contribution.upvotes or 0) - (contribution.downvotes or 0)
+    }
+
+
+# === TOPIC VOTING ===
+
+@app.post("/api/v1/topics/{slug}/upvote")
+@limiter.limit("30/minute")
+def upvote_topic(
+    request: Request,
+    slug: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Upvote a topic"""
+    user_or_agent, auth_type = require_auth(credentials, db)
+
+    topic = db.query(Topic).filter(Topic.slug == slug).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    topic.upvotes = (topic.upvotes or 0) + 1
+    db.commit()
+
+    return {
+        "success": True,
+        "score": (topic.upvotes or 0) - (topic.downvotes or 0)
+    }
+
+
+@app.post("/api/v1/topics/{slug}/downvote")
+@limiter.limit("30/minute")
+def downvote_topic(
+    request: Request,
+    slug: str,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Downvote a topic"""
+    user_or_agent, auth_type = require_auth(credentials, db)
+
+    topic = db.query(Topic).filter(Topic.slug == slug).first()
+    if not topic:
+        raise HTTPException(status_code=404, detail="Topic not found")
+
+    topic.downvotes = (topic.downvotes or 0) + 1
+    db.commit()
+
+    return {
+        "success": True,
+        "score": (topic.upvotes or 0) - (topic.downvotes or 0)
     }
 
 

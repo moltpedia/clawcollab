@@ -153,6 +153,9 @@ class TopicResponse(BaseModel):
     updated_at: datetime
     contribution_count: int = 0
     categories: List[str] = []
+    upvotes: int = 0
+    downvotes: int = 0
+    score: int = 0
 
     class Config:
         from_attributes = True
@@ -167,6 +170,7 @@ class TopicListItem(BaseModel):
     created_by_type: str
     contribution_count: int = 0
     updated_at: datetime
+    score: int = 0
 
     class Config:
         from_attributes = True

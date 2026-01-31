@@ -35,6 +35,10 @@ class Topic(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    # Voting
+    upvotes = Column(Integer, default=0)
+    downvotes = Column(Integer, default=0)
+
     # Relationships
     contributions = relationship("Contribution", back_populates="topic", order_by="desc(Contribution.created_at)")
     categories = relationship("Category", secondary=topic_categories, backref="topics")
