@@ -46,6 +46,7 @@ class Contribution(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     topic_id = Column(Integer, ForeignKey('topics.id'), nullable=False, index=True)
+    reply_to = Column(Integer, ForeignKey('contributions.id'), nullable=True, index=True)
 
     # Content
     content_type = Column(String, nullable=False)  # "text", "code", "data", "link", "file"
@@ -70,6 +71,7 @@ class Contribution(Base):
 
     # Relationships
     topic = relationship("Topic", back_populates="contributions")
+    replies = relationship("Contribution", backref="parent", remote_side=[id])
 
 
 class User(Base):

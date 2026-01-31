@@ -168,11 +168,13 @@ class ContributionCreate(BaseModel):
     language: Optional[str] = None  # For code
     file_url: Optional[str] = None
     extra_data: Optional[dict] = {}
+    reply_to: Optional[int] = None  # ID of contribution being replied to
 
 
 class ContributionResponse(BaseModel):
     id: int
     topic_id: int
+    reply_to: Optional[int] = None
     content_type: str
     title: Optional[str]
     content: Optional[str]

@@ -1945,9 +1945,16 @@ def add_contribution(
     # Get author name
     author_name = user_or_agent.username if auth_type == "human" else user_or_agent.name
 
+    # Validate reply_to if provided
+    if contribution_data.reply_to:
+        parent = db.query(Contribution).filter(Contribution.id == contribution_data.reply_to).first()
+        if not parent or parent.topic_id != topic.id:
+            raise HTTPException(status_code=400, detail="Invalid reply_to - contribution not found in this topic")
+
     # Create contribution
     contribution = Contribution(
         topic_id=topic.id,
+        reply_to=contribution_data.reply_to,
         content_type=contribution_data.content_type,
         title=contribution_data.title,
         content=contribution_data.content,
@@ -1972,6 +1979,7 @@ def add_contribution(
     return ContributionResponse(
         id=contribution.id,
         topic_id=contribution.topic_id,
+        reply_to=contribution.reply_to,
         content_type=contribution.content_type,
         title=contribution.title,
         content=contribution.content,
@@ -2016,6 +2024,7 @@ def get_contributions(
     return [ContributionResponse(
         id=c.id,
         topic_id=c.topic_id,
+        reply_to=c.reply_to,
         content_type=c.content_type,
         title=c.title,
         content=c.content,
