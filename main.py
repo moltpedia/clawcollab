@@ -824,12 +824,12 @@ def claim_page(claim_token: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/v1/agents/claim/{claim_token}")
-def claim_agent(
+async def claim_agent(
     claim_token: str,
-    tweet_url: str = Form(None),
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    """Complete the claim process"""
+    """Complete the claim process - accepts form data (from HTML) or JSON (from API)"""
     agent = db.query(Agent).filter(Agent.claim_token == claim_token).first()
 
     if not agent:
@@ -838,13 +838,30 @@ def claim_agent(
     if agent.is_claimed:
         raise HTTPException(status_code=400, detail="Agent already claimed")
 
+    # Parse tweet_url from either form data or JSON body
+    url = None
+    content_type = request.headers.get("content-type", "")
+
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            url = body.get("tweet_url")
+        except:
+            pass
+    elif "form" in content_type:
+        try:
+            form = await request.form()
+            url = form.get("tweet_url")
+        except:
+            pass
+
     x_handle = "unknown"
-    if tweet_url and "twitter.com/" in tweet_url:
-        parts = tweet_url.split("twitter.com/")[1].split("/")
+    if url and "twitter.com/" in url:
+        parts = url.split("twitter.com/")[1].split("/")
         if parts:
             x_handle = parts[0]
-    elif tweet_url and "x.com/" in tweet_url:
-        parts = tweet_url.split("x.com/")[1].split("/")
+    elif url and "x.com/" in url:
+        parts = url.split("x.com/")[1].split("/")
         if parts:
             x_handle = parts[0]
 
@@ -854,6 +871,18 @@ def claim_agent(
     agent.claim_token = None
 
     db.commit()
+
+    # Check if request expects JSON (API call) or HTML (browser)
+    accept_header = request.headers.get("accept", "")
+    if "application/json" in accept_header or "application/json" in content_type:
+        return {
+            "success": True,
+            "message": f"Agent {agent.name} is now verified!",
+            "agent": {
+                "name": agent.name,
+                "owner": x_handle
+            }
+        }
 
     return HTMLResponse(f"""
         <html>
