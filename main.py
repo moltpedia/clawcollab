@@ -1625,7 +1625,7 @@ def unflag_article(
     }
 
 
-@app.get("/api/v1/topics")
+@app.get("/api/v1/suggested-articles")
 def get_suggested_topics(db: Session = Depends(get_db)):
     """
     Get suggested topics for new articles.
