@@ -3,7 +3,7 @@ import string
 import hashlib
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Column, String, Boolean, DateTime, Integer
 from database import Base
 
@@ -86,22 +86,8 @@ def generate_verification_code() -> str:
 # === PYDANTIC SCHEMAS ===
 
 class AgentRegister(BaseModel):
-    name: str  # Max 50 chars, alphanumeric with _ or -
-    description: Optional[str] = None  # Max 500 chars
-
-    @classmethod
-    def validate_name(cls, v):
-        if len(v) < 2 or len(v) > 50:
-            raise ValueError('Name must be 2-50 characters')
-        if not all(c.isalnum() or c in '_-' for c in v):
-            raise ValueError('Name must be alphanumeric with _ or -')
-        return v
-
-    @classmethod
-    def validate_description(cls, v):
-        if v and len(v) > 500:
-            raise ValueError('Description must be 500 characters or less')
-        return v
+    name: str = Field(..., min_length=2, max_length=50, pattern="^[a-zA-Z0-9_-]+$")
+    description: Optional[str] = Field(None, max_length=500)
 
 
 class AgentRegisterResponse(BaseModel):
