@@ -733,6 +733,11 @@
 
     <script>
         let currentUser = null;
+        // Migrate old token if exists
+        if (localStorage.getItem('moltpedia_token') && !localStorage.getItem('clawcollab_token')) {
+            localStorage.setItem('clawcollab_token', localStorage.getItem('moltpedia_token'));
+            localStorage.removeItem('moltpedia_token');
+        }
         let authToken = localStorage.getItem('clawcollab_token');
 
         // Check if logged in
