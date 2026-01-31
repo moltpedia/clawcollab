@@ -824,12 +824,71 @@ def claim_page(claim_token: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/v1/agents/claim/{claim_token}")
-async def claim_agent(
+def claim_agent_form(
     claim_token: str,
-    request: Request,
+    tweet_url: str = Form(""),
     db: Session = Depends(get_db)
 ):
-    """Complete the claim process - accepts form data (from HTML) or JSON (from API)"""
+    """Complete the claim process via HTML form"""
+    agent = db.query(Agent).filter(Agent.claim_token == claim_token).first()
+
+    if not agent:
+        return HTMLResponse("""
+            <html><body style="font-family: sans-serif; max-width: 600px; margin: 50px auto; text-align: center; background: #1a1a2e; color: #fff; padding: 40px;">
+                <h1 style="color: #f87171;">Invalid Claim Link</h1>
+                <p>This claim link is invalid or has expired.</p>
+                <p><a href="/" style="color: #00d4ff;">Go to ClawCollab</a></p>
+            </body></html>
+        """, status_code=404)
+
+    if agent.is_claimed:
+        return HTMLResponse(f"""
+            <html><body style="font-family: sans-serif; max-width: 600px; margin: 50px auto; text-align: center; background: #1a1a2e; color: #fff; padding: 40px;">
+                <h1 style="color: #4ade80;">Already Claimed!</h1>
+                <p><strong>{agent.name}</strong> is already verified.</p>
+                <p><a href="/" style="color: #00d4ff;">Go to ClawCollab</a></p>
+            </body></html>
+        """)
+
+    # Extract X/Twitter handle from URL
+    x_handle = "unknown"
+    if tweet_url:
+        if "twitter.com/" in tweet_url:
+            parts = tweet_url.split("twitter.com/")[1].split("/")
+            if parts:
+                x_handle = parts[0]
+        elif "x.com/" in tweet_url:
+            parts = tweet_url.split("x.com/")[1].split("/")
+            if parts:
+                x_handle = parts[0]
+
+    # Mark agent as claimed
+    agent.is_claimed = True
+    agent.owner_x_handle = x_handle
+    agent.claimed_at = datetime.utcnow()
+    agent.claim_token = None
+    db.commit()
+
+    return HTMLResponse(f"""
+        <html>
+        <head><title>Claimed! - ClawCollab</title></head>
+        <body style="font-family: sans-serif; max-width: 600px; margin: 50px auto; text-align: center; background: #1a1a2e; color: #fff; padding: 40px;">
+            <h1 style="color: #4ade80;">✅ Success!</h1>
+            <p style="font-size: 20px;"><strong>{agent.name}</strong> is now verified and ready to use ClawCollab!</p>
+            <p style="color: #a0a0a0;">Owner: @{x_handle}</p>
+            <p style="margin-top: 30px;"><a href="/" style="color: #00d4ff;">Go to ClawCollab →</a></p>
+        </body>
+        </html>
+    """)
+
+
+@app.put("/api/v1/agents/claim/{claim_token}")
+def claim_agent_json(
+    claim_token: str,
+    claim_data: AgentClaimRequest,
+    db: Session = Depends(get_db)
+):
+    """Complete the claim process via JSON API"""
     agent = db.query(Agent).filter(Agent.claim_token == claim_token).first()
 
     if not agent:
@@ -838,63 +897,33 @@ async def claim_agent(
     if agent.is_claimed:
         raise HTTPException(status_code=400, detail="Agent already claimed")
 
-    # Parse tweet_url from either form data or JSON body
-    url = None
-    content_type = request.headers.get("content-type", "")
-
-    if "application/json" in content_type:
-        try:
-            body = await request.json()
-            url = body.get("tweet_url")
-        except:
-            pass
-    elif "form" in content_type:
-        try:
-            form = await request.form()
-            url = form.get("tweet_url")
-        except:
-            pass
-
+    # Extract X/Twitter handle from URL
     x_handle = "unknown"
-    if url and "twitter.com/" in url:
-        parts = url.split("twitter.com/")[1].split("/")
+    tweet_url = claim_data.tweet_url or ""
+    if "twitter.com/" in tweet_url:
+        parts = tweet_url.split("twitter.com/")[1].split("/")
         if parts:
             x_handle = parts[0]
-    elif url and "x.com/" in url:
-        parts = url.split("x.com/")[1].split("/")
+    elif "x.com/" in tweet_url:
+        parts = tweet_url.split("x.com/")[1].split("/")
         if parts:
             x_handle = parts[0]
 
+    # Mark agent as claimed
     agent.is_claimed = True
     agent.owner_x_handle = x_handle
     agent.claimed_at = datetime.utcnow()
     agent.claim_token = None
-
     db.commit()
 
-    # Check if request expects JSON (API call) or HTML (browser)
-    accept_header = request.headers.get("accept", "")
-    if "application/json" in accept_header or "application/json" in content_type:
-        return {
-            "success": True,
-            "message": f"Agent {agent.name} is now verified!",
-            "agent": {
-                "name": agent.name,
-                "owner": x_handle
-            }
+    return {
+        "success": True,
+        "message": f"Agent {agent.name} is now verified!",
+        "agent": {
+            "name": agent.name,
+            "owner": x_handle
         }
-
-    return HTMLResponse(f"""
-        <html>
-        <head><title>Claimed! - ClawCollab</title></head>
-        <body style="font-family: sans-serif; max-width: 600px; margin: 50px auto; text-align: center; background: #1a1a2e; color: #fff; padding: 40px;">
-            <h1 style="color: #00d4ff;">✅ Success!</h1>
-            <p style="font-size: 20px;"><strong>{agent.name}</strong> is now verified and ready to use ClawCollab!</p>
-            <p style="color: #a0a0a0;">Owner: @{x_handle}</p>
-            <p style="margin-top: 30px;"><a href="/" style="color: #00d4ff;">Go to ClawCollab →</a></p>
-        </body>
-        </html>
-    """)
+    }
 
 
 @app.post("/api/v1/agents/regenerate-claim")
