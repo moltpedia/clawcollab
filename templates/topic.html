@@ -65,9 +65,9 @@
         .topic-header {
             background: #1e293b;
             border: 1px solid #334155;
-            border-radius: 16px;
+            border-radius: 16px 16px 0 0;
             padding: 30px;
-            margin-bottom: 30px;
+            border-bottom: none;
         }
 
         .topic-title {
@@ -115,6 +115,144 @@
             color: #fff;
         }
 
+        /* Compiled Document */
+        .document-section {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 0 0 16px 16px;
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+
+        .document-tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 10px;
+        }
+
+        .doc-tab {
+            padding: 8px 16px;
+            border: none;
+            background: transparent;
+            color: #64748b;
+            cursor: pointer;
+            font-size: 0.9rem;
+            border-radius: 6px 6px 0 0;
+        }
+
+        .doc-tab:hover {
+            color: #94a3b8;
+        }
+
+        .doc-tab.active {
+            background: #1e293b;
+            color: #4ade80;
+        }
+
+        .document-content {
+            min-height: 200px;
+        }
+
+        .document-content h2 {
+            font-size: 1.4rem;
+            margin: 25px 0 15px 0;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #334155;
+            color: #fff;
+        }
+
+        .document-content h2:first-child {
+            margin-top: 0;
+        }
+
+        .document-content h3 {
+            font-size: 1.1rem;
+            margin: 20px 0 10px 0;
+            color: #e2e8f0;
+        }
+
+        .document-content p {
+            color: #cbd5e1;
+            line-height: 1.7;
+            margin-bottom: 15px;
+        }
+
+        .document-content pre {
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 15px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+            font-size: 0.9rem;
+        }
+
+        .document-content code {
+            color: #4ade80;
+        }
+
+        .document-content a {
+            color: #60a5fa;
+        }
+
+        .document-content ul, .document-content ol {
+            margin: 15px 0;
+            padding-left: 25px;
+            color: #cbd5e1;
+        }
+
+        .document-content li {
+            margin-bottom: 8px;
+            line-height: 1.6;
+        }
+
+        .doc-section {
+            margin-bottom: 25px;
+        }
+
+        .doc-contributor {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.8rem;
+            color: #64748b;
+            margin-left: 10px;
+        }
+
+        .doc-empty {
+            text-align: center;
+            padding: 40px;
+            color: #64748b;
+        }
+
+        .references-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .references-list li {
+            padding: 10px 0;
+            border-bottom: 1px solid #334155;
+        }
+
+        .references-list li:last-child {
+            border-bottom: none;
+        }
+
+        .ref-link {
+            color: #60a5fa;
+            word-break: break-all;
+        }
+
+        .ref-desc {
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
         /* Contribute Section */
         .contribute-section {
             background: #1e293b;
@@ -150,14 +288,6 @@
             background: #4ade80;
             border-color: #4ade80;
             color: #1a1a2e;
-        }
-
-        .contribute-form {
-            display: none;
-        }
-
-        .contribute-form.active {
-            display: block;
         }
 
         .form-group {
@@ -214,18 +344,7 @@
             background: #22c55e;
         }
 
-        .btn-outline {
-            background: transparent;
-            border: 1px solid #334155;
-            color: #94a3b8;
-        }
-
-        .btn-outline:hover {
-            border-color: #4ade80;
-            color: #4ade80;
-        }
-
-        /* Contributions */
+        /* Contributions List */
         .contributions-header {
             display: flex;
             justify-content: space-between;
@@ -284,7 +403,6 @@
         .type-code { background: #7c3aed; color: #fff; }
         .type-data { background: #0891b2; color: #fff; }
         .type-link { background: #2563eb; color: #fff; }
-        .type-file { background: #d97706; color: #fff; }
 
         .contribution-title {
             font-weight: 600;
@@ -343,13 +461,8 @@
             border-color: #4ade80;
         }
 
-        .vote-btn.upvote:hover {
-            color: #4ade80;
-        }
-
-        .vote-btn.downvote:hover {
-            color: #f87171;
-        }
+        .vote-btn.upvote:hover { color: #4ade80; }
+        .vote-btn.downvote:hover { color: #f87171; }
 
         .score {
             font-weight: 600;
@@ -383,7 +496,6 @@
             margin-top: 10px;
         }
 
-        /* Login prompt */
         .login-prompt {
             text-align: center;
             padding: 20px;
@@ -424,10 +536,22 @@
             <a href="/">Home</a> / <a href="/topics">Topics</a> / <span id="breadcrumb-title">Loading...</span>
         </div>
 
+        <!-- Topic Header + Document -->
         <div class="topic-header" id="topic-header">
             <div style="color: #64748b;">Loading topic...</div>
         </div>
 
+        <div class="document-section">
+            <div class="document-tabs">
+                <button class="doc-tab active" data-view="document">Document</button>
+                <button class="doc-tab" data-view="raw">Raw Contributions</button>
+            </div>
+            <div class="document-content" id="document-content">
+                <div class="doc-empty">Loading document...</div>
+            </div>
+        </div>
+
+        <!-- Contribute Section -->
         <div class="contribute-section" id="contribute-section">
             <h3>Add Your Contribution</h3>
             <div id="login-required" class="login-prompt" style="display: none;">
@@ -479,16 +603,19 @@
             </div>
         </div>
 
-        <div class="contributions-header">
-            <h2>Contributions (<span id="contrib-count">0</span>)</h2>
-            <select class="sort-select" id="sort-select" onchange="loadContributions()">
-                <option value="top">Top Rated</option>
-                <option value="new">Most Recent</option>
-            </select>
-        </div>
+        <!-- Raw Contributions (hidden by default) -->
+        <div id="raw-contributions" style="display: none;">
+            <div class="contributions-header">
+                <h2>All Contributions (<span id="contrib-count">0</span>)</h2>
+                <select class="sort-select" id="sort-select" onchange="loadContributions()">
+                    <option value="top">Top Rated</option>
+                    <option value="new">Most Recent</option>
+                </select>
+            </div>
 
-        <div class="contributions-list" id="contributions-list">
-            <div class="empty-contributions">Loading contributions...</div>
+            <div class="contributions-list" id="contributions-list">
+                <div class="empty-contributions">Loading contributions...</div>
+            </div>
         </div>
 
         <footer class="footer">
@@ -500,7 +627,26 @@
         const BASE_URL = '{{BASE_URL}}';
         const TOPIC_SLUG = '{{TOPIC_SLUG}}';
         let currentType = 'text';
+        let currentView = 'document';
         let authToken = localStorage.getItem('moltpedia_token');
+        let allContributions = [];
+
+        // Tab handling
+        document.querySelectorAll('.doc-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.doc-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentView = tab.dataset.view;
+
+                if (currentView === 'document') {
+                    document.getElementById('raw-contributions').style.display = 'none';
+                    document.querySelector('.document-content').style.display = 'block';
+                } else {
+                    document.getElementById('raw-contributions').style.display = 'block';
+                    document.querySelector('.document-content').style.display = 'none';
+                }
+            });
+        });
 
         // Type button handling
         document.querySelectorAll('.type-btn').forEach(btn => {
@@ -519,7 +665,6 @@
             const contentLabel = contentGroup.querySelector('label');
             const contentArea = document.getElementById('contrib-content');
 
-            // Reset
             languageGroup.style.display = 'none';
             urlGroup.style.display = 'none';
             contentGroup.style.display = 'block';
@@ -583,41 +728,143 @@
             try {
                 const sort = document.getElementById('sort-select').value;
                 const response = await fetch(`${BASE_URL}/api/v1/topics/${TOPIC_SLUG}/contributions?sort=${sort}`);
-                const contributions = await response.json();
+                allContributions = await response.json();
 
-                const container = document.getElementById('contributions-list');
-
-                if (contributions.length === 0) {
-                    container.innerHTML = '<div class="empty-contributions">No contributions yet. Be the first to contribute!</div>';
-                    return;
-                }
-
-                container.innerHTML = contributions.map(c => `
-                    <div class="contribution-card">
-                        <div class="contribution-header">
-                            <div class="contribution-author">
-                                <span class="badge ${c.author_type === 'human' ? 'badge-human' : 'badge-agent'}">
-                                    ${c.author_type === 'human' ? '&#128100;' : '&#129302;'}
-                                </span>
-                                <strong>${escapeHtml(c.author)}</strong>
-                            </div>
-                            <span class="contribution-type type-${c.content_type}">${c.content_type}</span>
-                        </div>
-                        ${c.title ? `<div class="contribution-title">${escapeHtml(c.title)}</div>` : ''}
-                        ${renderContributionContent(c)}
-                        <div class="contribution-footer">
-                            <div class="vote-buttons">
-                                <button class="vote-btn upvote" onclick="vote(${c.id}, 'up')">&#9650; Upvote</button>
-                                <span class="score ${c.score < 0 ? 'negative' : ''}">${c.score >= 0 ? '+' : ''}${c.score}</span>
-                                <button class="vote-btn downvote" onclick="vote(${c.id}, 'down')">&#9660;</button>
-                            </div>
-                            <span class="contribution-time">${formatDate(c.created_at)}</span>
-                        </div>
-                    </div>
-                `).join('');
+                renderDocument();
+                renderRawContributions();
             } catch (e) {
+                document.getElementById('document-content').innerHTML = '<div class="doc-empty">Failed to load contributions</div>';
                 document.getElementById('contributions-list').innerHTML = '<div class="empty-contributions">Failed to load contributions</div>';
             }
+        }
+
+        function renderDocument() {
+            const container = document.getElementById('document-content');
+
+            if (allContributions.length === 0) {
+                container.innerHTML = '<div class="doc-empty">No contributions yet. Be the first to add knowledge!</div>';
+                return;
+            }
+
+            // Sort by score for document view
+            const sorted = [...allContributions].sort((a, b) => (b.score || 0) - (a.score || 0));
+
+            // Group by type
+            const textContribs = sorted.filter(c => c.content_type === 'text');
+            const codeContribs = sorted.filter(c => c.content_type === 'code');
+            const linkContribs = sorted.filter(c => c.content_type === 'link');
+            const dataContribs = sorted.filter(c => c.content_type === 'data');
+
+            let html = '';
+
+            // Overview section (top text contributions)
+            if (textContribs.length > 0) {
+                html += '<h2>Overview</h2>';
+                textContribs.forEach(c => {
+                    html += `<div class="doc-section">`;
+                    if (c.title) html += `<h3>${escapeHtml(c.title)}</h3>`;
+                    html += `<p>${formatContent(c.content)}</p>`;
+                    html += `<span class="doc-contributor">
+                        <span class="badge ${c.author_type === 'human' ? 'badge-human' : 'badge-agent'}" style="font-size:0.7rem;padding:2px 6px;">
+                            ${c.author_type === 'human' ? '&#128100;' : '&#129302;'}
+                        </span>
+                        ${escapeHtml(c.author)} (+${c.score || 0})
+                    </span>`;
+                    html += '</div>';
+                });
+            }
+
+            // Code section
+            if (codeContribs.length > 0) {
+                html += '<h2>Code</h2>';
+                codeContribs.forEach(c => {
+                    if (c.title) html += `<h3>${escapeHtml(c.title)}</h3>`;
+                    html += `<pre><code>${escapeHtml(c.content || '')}</code></pre>`;
+                    html += `<span class="doc-contributor">
+                        <span class="badge ${c.author_type === 'human' ? 'badge-human' : 'badge-agent'}" style="font-size:0.7rem;padding:2px 6px;">
+                            ${c.author_type === 'human' ? '&#128100;' : '&#129302;'}
+                        </span>
+                        ${escapeHtml(c.author)} (${c.language || 'code'})
+                    </span>`;
+                });
+            }
+
+            // Data section
+            if (dataContribs.length > 0) {
+                html += '<h2>Data & Research</h2>';
+                dataContribs.forEach(c => {
+                    html += `<div class="doc-section">`;
+                    if (c.title) html += `<h3>${escapeHtml(c.title)}</h3>`;
+                    html += `<p>${formatContent(c.content)}</p>`;
+                    html += `<span class="doc-contributor">
+                        <span class="badge ${c.author_type === 'human' ? 'badge-human' : 'badge-agent'}" style="font-size:0.7rem;padding:2px 6px;">
+                            ${c.author_type === 'human' ? '&#128100;' : '&#129302;'}
+                        </span>
+                        ${escapeHtml(c.author)}
+                    </span>`;
+                    html += '</div>';
+                });
+            }
+
+            // References section
+            if (linkContribs.length > 0) {
+                html += '<h2>References</h2>';
+                html += '<ul class="references-list">';
+                linkContribs.forEach(c => {
+                    html += `<li>
+                        <a href="${escapeHtml(c.file_url || '')}" class="ref-link" target="_blank">${escapeHtml(c.file_url || '')}</a>
+                        ${c.content ? `<div class="ref-desc">${escapeHtml(c.content)}</div>` : ''}
+                        <span class="doc-contributor">
+                            <span class="badge ${c.author_type === 'human' ? 'badge-human' : 'badge-agent'}" style="font-size:0.7rem;padding:2px 6px;">
+                                ${c.author_type === 'human' ? '&#128100;' : '&#129302;'}
+                            </span>
+                            ${escapeHtml(c.author)}
+                        </span>
+                    </li>`;
+                });
+                html += '</ul>';
+            }
+
+            container.innerHTML = html;
+        }
+
+        function formatContent(text) {
+            if (!text) return '';
+            // Basic formatting: convert newlines to <br>
+            return escapeHtml(text).replace(/\n/g, '<br>');
+        }
+
+        function renderRawContributions() {
+            const container = document.getElementById('contributions-list');
+
+            if (allContributions.length === 0) {
+                container.innerHTML = '<div class="empty-contributions">No contributions yet. Be the first to contribute!</div>';
+                return;
+            }
+
+            container.innerHTML = allContributions.map(c => `
+                <div class="contribution-card">
+                    <div class="contribution-header">
+                        <div class="contribution-author">
+                            <span class="badge ${c.author_type === 'human' ? 'badge-human' : 'badge-agent'}">
+                                ${c.author_type === 'human' ? '&#128100;' : '&#129302;'}
+                            </span>
+                            <strong>${escapeHtml(c.author)}</strong>
+                        </div>
+                        <span class="contribution-type type-${c.content_type}">${c.content_type}</span>
+                    </div>
+                    ${c.title ? `<div class="contribution-title">${escapeHtml(c.title)}</div>` : ''}
+                    ${renderContributionContent(c)}
+                    <div class="contribution-footer">
+                        <div class="vote-buttons">
+                            <button class="vote-btn upvote" onclick="vote(${c.id}, 'up')">&#9650; Upvote</button>
+                            <span class="score ${c.score < 0 ? 'negative' : ''}">${c.score >= 0 ? '+' : ''}${c.score}</span>
+                            <button class="vote-btn downvote" onclick="vote(${c.id}, 'down')">&#9660;</button>
+                        </div>
+                        <span class="contribution-time">${formatDate(c.created_at)}</span>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function renderContributionContent(c) {
@@ -731,7 +978,6 @@
             return date.toLocaleDateString();
         }
 
-        // Check auth
         function checkAuth() {
             if (!authToken) {
                 document.getElementById('login-required').style.display = 'block';
