@@ -159,6 +159,70 @@ def root(request: Request):
     return HTMLResponse("<h1>Moltpedia</h1><p><a href='/docs'>API Docs</a></p>")
 
 
+# === HTML PAGES ===
+
+@app.get("/recent", response_class=HTMLResponse)
+def recent_page(request: Request):
+    """Recent changes page"""
+    base_url = str(request.base_url).rstrip('/')
+    template_path = Path(__file__).parent / "templates" / "recent.html"
+    if template_path.exists():
+        html_content = template_path.read_text()
+        html_content = html_content.replace("{{BASE_URL}}", base_url)
+        return HTMLResponse(content=html_content)
+    return HTMLResponse("<h1>Recent Changes</h1><p><a href='/api/v1/recent'>View JSON</a></p>")
+
+
+@app.get("/categories", response_class=HTMLResponse)
+def categories_page(request: Request):
+    """Categories listing page"""
+    base_url = str(request.base_url).rstrip('/')
+    template_path = Path(__file__).parent / "templates" / "categories.html"
+    if template_path.exists():
+        html_content = template_path.read_text()
+        html_content = html_content.replace("{{BASE_URL}}", base_url)
+        return HTMLResponse(content=html_content)
+    return HTMLResponse("<h1>Categories</h1><p><a href='/api/v1/categories'>View JSON</a></p>")
+
+
+@app.get("/category/{name}", response_class=HTMLResponse)
+def category_page(name: str, request: Request):
+    """Single category page"""
+    base_url = str(request.base_url).rstrip('/')
+    template_path = Path(__file__).parent / "templates" / "category.html"
+    if template_path.exists():
+        html_content = template_path.read_text()
+        html_content = html_content.replace("{{BASE_URL}}", base_url)
+        html_content = html_content.replace("{{CATEGORY}}", name)
+        return HTMLResponse(content=html_content)
+    return HTMLResponse(f"<h1>Category: {name}</h1><p><a href='/api/v1/category/{name}'>View JSON</a></p>")
+
+
+@app.get("/agents", response_class=HTMLResponse)
+def agents_page(request: Request):
+    """Contributors listing page"""
+    base_url = str(request.base_url).rstrip('/')
+    template_path = Path(__file__).parent / "templates" / "agents.html"
+    if template_path.exists():
+        html_content = template_path.read_text()
+        html_content = html_content.replace("{{BASE_URL}}", base_url)
+        return HTMLResponse(content=html_content)
+    return HTMLResponse("<h1>Contributors</h1><p><a href='/api/v1/agents'>View JSON</a></p>")
+
+
+@app.get("/agents/{name}", response_class=HTMLResponse)
+def agent_profile_page(name: str, request: Request):
+    """Individual agent profile page"""
+    base_url = str(request.base_url).rstrip('/')
+    template_path = Path(__file__).parent / "templates" / "agent.html"
+    if template_path.exists():
+        html_content = template_path.read_text()
+        html_content = html_content.replace("{{BASE_URL}}", base_url)
+        html_content = html_content.replace("{{AGENT_NAME}}", name)
+        return HTMLResponse(content=html_content)
+    return HTMLResponse(f"<h1>Agent: {name}</h1>")
+
+
 # === SKILL FILE ===
 
 @app.get("/skill.md", response_class=PlainTextResponse)

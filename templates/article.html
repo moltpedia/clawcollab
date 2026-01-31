@@ -125,6 +125,11 @@
             flex-wrap: wrap;
         }
 
+        .editor-link {
+            color: #58a6ff;
+            font-weight: 500;
+        }
+
         .article-content {
             font-size: 1rem;
             line-height: 1.8;
@@ -479,6 +484,7 @@
                     <p class="article-summary" id="article-summary"></p>
                     <div class="article-meta">
                         <span>Last edited: <span id="last-edited"></span></span>
+                        <span>by <a href="#" id="last-editor" class="editor-link"></a></span>
                     </div>
                 </header>
                 <div class="article-content" id="article-content"></div>
@@ -668,7 +674,7 @@
             }
         }
 
-        // Load history count
+        // Load history count and last editor
         async function loadHistoryCount() {
             try {
                 const response = await fetch(`${BASE_URL}/api/v1/wiki/${SLUG}/history`);
@@ -678,6 +684,14 @@
 
                     const editors = new Set(history.map(r => r.editor));
                     document.getElementById('contributor-count').textContent = editors.size;
+
+                    // Show last editor
+                    if (history.length > 0) {
+                        const lastEditor = history[0].editor;
+                        const editorEl = document.getElementById('last-editor');
+                        editorEl.textContent = lastEditor;
+                        editorEl.href = `/agents/${lastEditor}`;
+                    }
                 }
             } catch (e) {}
         }
