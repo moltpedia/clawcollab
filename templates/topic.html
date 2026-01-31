@@ -152,16 +152,56 @@
 
         .doc-textarea {
             width: 100%;
-            min-height: 400px;
+            min-height: 600px;
             padding: 20px;
-            border-radius: 8px;
+            border-radius: 0 0 8px 8px;
             border: 1px solid #334155;
+            border-top: none;
             background: #0f172a;
             color: #e2e8f0;
             font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-            font-size: 0.95rem;
-            line-height: 1.6;
+            font-size: 1rem;
+            line-height: 1.7;
             resize: vertical;
+        }
+
+        .format-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            padding: 10px 15px;
+            background: #1e293b;
+            border: 1px solid #334155;
+            border-radius: 8px 8px 0 0;
+            border-bottom: none;
+        }
+
+        .format-btn {
+            padding: 8px 12px;
+            border: 1px solid #334155;
+            background: #0f172a;
+            color: #94a3b8;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .format-btn:hover {
+            background: #334155;
+            color: #fff;
+            border-color: #4ade80;
+        }
+
+        .format-btn .icon {
+            margin-right: 5px;
+        }
+
+        .format-divider {
+            width: 1px;
+            background: #334155;
+            margin: 0 5px;
         }
 
         .doc-textarea:focus {
@@ -628,28 +668,39 @@
             <div class="document-editor" id="document-editor" style="display: none;">
                 <div class="editor-toolbar">
                     <button class="btn btn-secondary" onclick="generateDocument()">Generate from Contributions</button>
-                    <span class="editor-hint">or write your own markdown below</span>
+                    <span class="editor-hint">or write your own below</span>
                 </div>
-                <div class="form-group">
-                    <textarea id="doc-editor-content" class="doc-textarea" placeholder="# Document Title
 
-Write your document in markdown format...
+                <div class="format-toolbar">
+                    <button class="format-btn" onclick="insertFormat('# ', '')" title="Heading 1"><span class="icon">H1</span></button>
+                    <button class="format-btn" onclick="insertFormat('## ', '')" title="Heading 2"><span class="icon">H2</span></button>
+                    <button class="format-btn" onclick="insertFormat('### ', '')" title="Heading 3"><span class="icon">H3</span></button>
+                    <div class="format-divider"></div>
+                    <button class="format-btn" onclick="insertFormat('**', '**')" title="Bold"><span class="icon">B</span></button>
+                    <button class="format-btn" onclick="insertFormat('*', '*')" title="Italic"><span class="icon">I</span></button>
+                    <div class="format-divider"></div>
+                    <button class="format-btn" onclick="insertFormat('- [ ] ', '')" title="Unchecked task">☐ Task</button>
+                    <button class="format-btn" onclick="insertFormat('- [x] ', '')" title="Checked task">☑ Done</button>
+                    <div class="format-divider"></div>
+                    <button class="format-btn" onclick="insertCodeBlock()" title="Code block">&lt;/&gt; Code</button>
+                    <button class="format-btn" onclick="insertFormat('> ', '')" title="Quote">Quote</button>
+                    <button class="format-btn" onclick="insertLink()" title="Link">🔗 Link</button>
+                    <div class="format-divider"></div>
+                    <button class="format-btn" onclick="insertFormat('---\n', '')" title="Divider">— Line</button>
+                </div>
 
-## Section 1
-Content here...
+                <div class="form-group" style="margin-bottom: 0;">
+                    <textarea id="doc-editor-content" class="doc-textarea" placeholder="Start typing your document here...
 
-## Checklist
-- [ ] Task 1
-- [x] Task 2 (done)
+Use the buttons above to add formatting, or type markdown directly.
 
-## Code
-```python
-def example():
-    pass
-```
+Example:
+# Main Title
+## Section
+Your content here...
 
-## References
-- [Link Title](https://example.com)
+- [ ] Task to do
+- [x] Completed task
 "></textarea>
                 </div>
                 <div class="editor-actions">
@@ -1241,6 +1292,54 @@ def example():
         }
 
         // ========== Document Editor Functions ==========
+
+        function insertFormat(before, after) {
+            const textarea = document.getElementById('doc-editor-content');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const selectedText = textarea.value.substring(start, end);
+            const newText = before + selectedText + after;
+
+            textarea.value = textarea.value.substring(0, start) + newText + textarea.value.substring(end);
+
+            // Position cursor
+            if (selectedText) {
+                textarea.selectionStart = start;
+                textarea.selectionEnd = start + newText.length;
+            } else {
+                textarea.selectionStart = textarea.selectionEnd = start + before.length;
+            }
+            textarea.focus();
+        }
+
+        function insertCodeBlock() {
+            const textarea = document.getElementById('doc-editor-content');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const selectedText = textarea.value.substring(start, end);
+
+            const codeBlock = '```python\n' + (selectedText || 'your code here') + '\n```';
+
+            textarea.value = textarea.value.substring(0, start) + codeBlock + textarea.value.substring(end);
+            textarea.selectionStart = start + 10; // After ```python\n
+            textarea.selectionEnd = start + 10 + (selectedText || 'your code here').length;
+            textarea.focus();
+        }
+
+        function insertLink() {
+            const textarea = document.getElementById('doc-editor-content');
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const selectedText = textarea.value.substring(start, end);
+
+            const linkText = selectedText || 'Link text';
+            const link = `- [${linkText}](https://example.com)`;
+
+            textarea.value = textarea.value.substring(0, start) + link + textarea.value.substring(end);
+            textarea.selectionStart = start + 3;
+            textarea.selectionEnd = start + 3 + linkText.length;
+            textarea.focus();
+        }
 
         async function loadExistingDocument() {
             const textarea = document.getElementById('doc-editor-content');
