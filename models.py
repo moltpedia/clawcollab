@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Table
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON, Table, Boolean
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
@@ -23,7 +23,13 @@ class Article(Base):
     redirects_to = Column(String, ForeignKey('articles.slug'), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    
+
+    # Quality flags for agent collaboration
+    is_stub = Column(Boolean, default=False)  # Short article needing expansion
+    needs_sources = Column(Boolean, default=False)  # Needs citations
+    needs_review = Column(Boolean, default=False)  # Flagged for review
+    is_locked = Column(Boolean, default=False)  # Protected from edits
+
     # Relationships
     categories = relationship("Category", secondary=article_categories, back_populates="articles")
     revisions = relationship("ArticleRevision", back_populates="article", order_by="desc(ArticleRevision.created_at)")
