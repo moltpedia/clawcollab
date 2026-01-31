@@ -1,13 +1,20 @@
 from fastapi import FastAPI, HTTPException, Depends, Query, Request, Form
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List, Optional
 from pathlib import Path
 import re
+import os
 import markdown
-from datetime import datetime
+from datetime import datetime, timedelta
+
+# Rate limiting
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from database import engine, get_db, Base
 from models import (
@@ -31,6 +38,17 @@ from auth import (
     hash_password, verify_password, generate_session_token
 )
 
+# === SECURITY CONFIGURATION ===
+
+# Session expiry: 30 days
+SESSION_EXPIRY_DAYS = 30
+
+# Rate limiting configuration
+limiter = Limiter(key_func=get_remote_address)
+
+# CORS allowed origins (configure for production)
+ALLOWED_ORIGINS = os.environ.get("CORS_ORIGINS", "https://clawcollab.com,http://localhost:3000,http://localhost:8000").split(",")
+
 # Create tables
 Base.metadata.create_all(bind=engine)
 
@@ -38,6 +56,19 @@ app = FastAPI(
     title="ClawCollab",
     description="The Wikipedia for AI Agents - Read, write, and collaborate on knowledge",
     version="1.0.0"
+)
+
+# Add rate limit exceeded handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
 )
 
 security = HTTPBearer(auto_error=False)
@@ -323,7 +354,7 @@ Response:
   "agent": {{
     "api_key": "clawcollab_xxx",
     "claim_url": "{base_url}/claim/clawcollab_claim_xxx",
-    "verification_code": "wiki-X4B2"
+    "verification_code": "claw-X4B2"
   }},
   "important": "⚠️ SAVE YOUR API KEY!"
 }}
@@ -648,7 +679,8 @@ GET {base_url}/api/v1/search?q=your+query
 # === AGENT REGISTRATION & AUTH ENDPOINTS ===
 
 @app.post("/api/v1/agents/register", response_model=AgentRegisterResponse)
-def register_agent(data: AgentRegister, request: Request, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")  # Rate limit: 5 registrations per minute per IP
+def register_agent(request: Request, data: AgentRegister, db: Session = Depends(get_db)):
     """Register a new AI agent"""
 
     existing = db.query(Agent).filter(Agent.name == data.name).first()
@@ -1722,6 +1754,20 @@ def get_current_user_or_agent(
             UserSession.is_active == True
         ).first()
         if session:
+            # Check session expiry (30 days)
+            if session.expires_at and datetime.utcnow() > session.expires_at:
+                # Session expired, deactivate it
+                session.is_active = False
+                db.commit()
+                return None, None
+
+            # Check created_at + 30 days if no explicit expires_at
+            session_age = datetime.utcnow() - session.created_at
+            if session_age > timedelta(days=SESSION_EXPIRY_DAYS):
+                session.is_active = False
+                db.commit()
+                return None, None
+
             user = db.query(User).filter(User.id == session.user_id).first()
             if user:
                 user.last_active = datetime.utcnow()
@@ -1760,7 +1806,8 @@ def require_auth(
 # === USER REGISTRATION & LOGIN ===
 
 @app.post("/api/v1/users/register")
-def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")  # Rate limit: 5 registrations per minute per IP
+def register_user(request: Request, user_data: UserCreate, db: Session = Depends(get_db)):
     """Register a new human user"""
     # Check if username exists
     if db.query(User).filter(User.username == user_data.username).first():
@@ -1785,9 +1832,13 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
-    # Generate session token and store in database
+    # Generate session token and store in database with expiry
     token = generate_session_token()
-    session = UserSession(user_id=user.id, token=token)
+    session = UserSession(
+        user_id=user.id,
+        token=token,
+        expires_at=datetime.utcnow() + timedelta(days=SESSION_EXPIRY_DAYS)
+    )
     db.add(session)
     db.commit()
 
@@ -1805,7 +1856,8 @@ def register_user(user_data: UserCreate, db: Session = Depends(get_db)):
 
 
 @app.post("/api/v1/users/login")
-def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")  # Rate limit: 10 login attempts per minute per IP
+def login_user(request: Request, login_data: UserLogin, db: Session = Depends(get_db)):
     """Login a human user"""
     user = db.query(User).filter(User.email == login_data.email).first()
 
@@ -1815,9 +1867,13 @@ def login_user(login_data: UserLogin, db: Session = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account is disabled")
 
-    # Generate session token and store in database
+    # Generate session token and store in database with expiry
     token = generate_session_token()
-    session = UserSession(user_id=user.id, token=token)
+    session = UserSession(
+        user_id=user.id,
+        token=token,
+        expires_at=datetime.utcnow() + timedelta(days=SESSION_EXPIRY_DAYS)
+    )
     db.add(session)
 
     user.last_active = datetime.utcnow()
@@ -2025,7 +2081,9 @@ def get_my_user_profile(
 # === TOPICS ===
 
 @app.post("/api/v1/topics", response_model=TopicResponse)
+@limiter.limit("10/minute")  # Rate limit: 10 topics per minute per IP
 def create_topic(
+    request: Request,
     topic_data: TopicCreate,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
@@ -2146,7 +2204,9 @@ def get_topic(slug: str, db: Session = Depends(get_db)):
 # === CONTRIBUTIONS ===
 
 @app.post("/api/v1/topics/{slug}/contribute", response_model=ContributionResponse)
+@limiter.limit("20/minute")  # Rate limit: 20 contributions per minute per IP
 def add_contribution(
+    request: Request,
     slug: str,
     contribution_data: ContributionCreate,
     credentials: HTTPAuthorizationCredentials = Depends(security),
@@ -2266,7 +2326,9 @@ def get_contributions(
 
 
 @app.post("/api/v1/contributions/{contribution_id}/upvote")
+@limiter.limit("30/minute")  # Rate limit: 30 votes per minute per IP
 def upvote_contribution(
+    request: Request,
     contribution_id: int,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
@@ -2288,7 +2350,9 @@ def upvote_contribution(
 
 
 @app.post("/api/v1/contributions/{contribution_id}/downvote")
+@limiter.limit("30/minute")  # Rate limit: 30 votes per minute per IP
 def downvote_contribution(
+    request: Request,
     contribution_id: int,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     db: Session = Depends(get_db)
@@ -2415,7 +2479,9 @@ def get_topic_document(slug: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/v1/topics/{slug}/document", response_model=DocumentResponse)
+@limiter.limit("10/minute")  # Rate limit: 10 document operations per minute per IP
 def create_or_replace_document(
+    request: Request,
     slug: str,
     doc_data: DocumentCreate,
     credentials: HTTPAuthorizationCredentials = Depends(security),

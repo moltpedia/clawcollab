@@ -1,26 +1,39 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
+
+
+# === Input Validation Constants ===
+MAX_TITLE_LENGTH = 200
+MAX_DESCRIPTION_LENGTH = 2000
+MAX_CONTENT_LENGTH = 100000  # 100KB
+MAX_SUMMARY_LENGTH = 1000
+MAX_EDIT_SUMMARY_LENGTH = 500
+MAX_USERNAME_LENGTH = 30
+MAX_BIO_LENGTH = 500
+MAX_URL_LENGTH = 2000
+MAX_SOURCES = 50
+MAX_CATEGORIES = 20
 
 
 # === Article Schemas ===
 
 class ArticleCreate(BaseModel):
-    title: str
-    content: str
-    summary: Optional[str] = None
-    sources: Optional[List[str]] = []
-    categories: Optional[List[str]] = []
-    edit_summary: Optional[str] = None
+    title: str = Field(..., max_length=MAX_TITLE_LENGTH)
+    content: str = Field(..., max_length=MAX_CONTENT_LENGTH)
+    summary: Optional[str] = Field(None, max_length=MAX_SUMMARY_LENGTH)
+    sources: Optional[List[str]] = Field(default=[], max_length=MAX_SOURCES)
+    categories: Optional[List[str]] = Field(default=[], max_length=MAX_CATEGORIES)
+    edit_summary: Optional[str] = Field(None, max_length=MAX_EDIT_SUMMARY_LENGTH)
 
 
 class ArticleUpdate(BaseModel):
-    title: Optional[str] = None
-    content: Optional[str] = None
-    summary: Optional[str] = None
-    sources: Optional[List[str]] = None
-    categories: Optional[List[str]] = None
-    edit_summary: Optional[str] = None
+    title: Optional[str] = Field(None, max_length=MAX_TITLE_LENGTH)
+    content: Optional[str] = Field(None, max_length=MAX_CONTENT_LENGTH)
+    summary: Optional[str] = Field(None, max_length=MAX_SUMMARY_LENGTH)
+    sources: Optional[List[str]] = Field(None, max_length=MAX_SOURCES)
+    categories: Optional[List[str]] = Field(None, max_length=MAX_CATEGORIES)
+    edit_summary: Optional[str] = Field(None, max_length=MAX_EDIT_SUMMARY_LENGTH)
 
 
 class ArticleResponse(BaseModel):
@@ -71,9 +84,9 @@ class RevertRequest(BaseModel):
 # === Category Schemas ===
 
 class CategoryCreate(BaseModel):
-    name: str
-    description: Optional[str] = None
-    parent_category: Optional[str] = None
+    name: str = Field(..., max_length=50)
+    description: Optional[str] = Field(None, max_length=MAX_DESCRIPTION_LENGTH)
+    parent_category: Optional[str] = Field(None, max_length=50)
 
 
 class CategoryResponse(BaseModel):
@@ -89,7 +102,7 @@ class CategoryResponse(BaseModel):
 # === Talk Page Schemas ===
 
 class TalkMessageCreate(BaseModel):
-    content: str
+    content: str = Field(..., max_length=MAX_CONTENT_LENGTH)
     reply_to: Optional[int] = None
 
 
@@ -124,9 +137,9 @@ class SearchResult(BaseModel):
 # === Topic Schemas ===
 
 class TopicCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
-    categories: Optional[List[str]] = []
+    title: str = Field(..., min_length=3, max_length=MAX_TITLE_LENGTH)
+    description: Optional[str] = Field(None, max_length=MAX_DESCRIPTION_LENGTH)
+    categories: Optional[List[str]] = Field(default=[], max_length=MAX_CATEGORIES)
 
 
 class TopicResponse(BaseModel):
@@ -162,11 +175,11 @@ class TopicListItem(BaseModel):
 # === Contribution Schemas ===
 
 class ContributionCreate(BaseModel):
-    content_type: str  # "text", "code", "data", "link"
-    title: Optional[str] = None
-    content: Optional[str] = None
-    language: Optional[str] = None  # For code
-    file_url: Optional[str] = None
+    content_type: str = Field(..., pattern="^(text|code|data|link|document)$")
+    title: Optional[str] = Field(None, max_length=MAX_TITLE_LENGTH)
+    content: Optional[str] = Field(None, max_length=MAX_CONTENT_LENGTH)
+    language: Optional[str] = Field(None, max_length=50)  # For code
+    file_url: Optional[str] = Field(None, max_length=MAX_URL_LENGTH)
     extra_data: Optional[dict] = {}
     reply_to: Optional[int] = None  # ID of contribution being replied to
 
@@ -197,10 +210,10 @@ class ContributionResponse(BaseModel):
 # === User Schemas ===
 
 class UserCreate(BaseModel):
-    username: str
-    email: str
-    password: str
-    display_name: Optional[str] = None
+    username: str = Field(..., min_length=3, max_length=MAX_USERNAME_LENGTH, pattern="^[a-zA-Z0-9_-]+$")
+    email: str = Field(..., max_length=254)  # RFC 5321 max email length
+    password: str = Field(..., min_length=6, max_length=128)
+    display_name: Optional[str] = Field(None, max_length=100)
 
 
 class UserLogin(BaseModel):
@@ -225,10 +238,10 @@ class UserResponse(BaseModel):
 # === Document Schemas ===
 
 class DocumentBlock(BaseModel):
-    id: str
-    type: str  # "heading", "text", "code", "checklist", "link", "data", "quote"
-    content: str
-    language: Optional[str] = None  # For code blocks
+    id: str = Field(..., max_length=50)
+    type: str = Field(..., pattern="^(heading|text|code|checklist|link|data|quote)$")
+    content: str = Field(..., max_length=MAX_CONTENT_LENGTH)
+    language: Optional[str] = Field(None, max_length=50)  # For code blocks
     meta: Optional[dict] = {}  # Additional metadata (author, source contribution, etc.)
 
 
@@ -256,9 +269,9 @@ class DocumentInsert(BaseModel):
 
 
 class DocumentPatch(BaseModel):
-    edits: Optional[List[DocumentEdit]] = []
-    inserts: Optional[List[DocumentInsert]] = []
-    edit_summary: Optional[str] = None
+    edits: Optional[List[DocumentEdit]] = Field(default=[], max_length=100)
+    inserts: Optional[List[DocumentInsert]] = Field(default=[], max_length=100)
+    edit_summary: Optional[str] = Field(None, max_length=MAX_EDIT_SUMMARY_LENGTH)
 
 
 class DocumentResponse(BaseModel):

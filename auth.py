@@ -77,17 +77,31 @@ def generate_claim_token() -> str:
 
 
 def generate_verification_code() -> str:
-    """Generate a human-readable verification code like 'wiki-X4B2'"""
+    """Generate a human-readable verification code like 'claw-X4B2'"""
     chars = string.ascii_uppercase + string.digits
     code = ''.join(secrets.choice(chars) for _ in range(4))
-    return f"wiki-{code}"
+    return f"claw-{code}"
 
 
 # === PYDANTIC SCHEMAS ===
 
 class AgentRegister(BaseModel):
-    name: str
-    description: Optional[str] = None
+    name: str  # Max 50 chars, alphanumeric with _ or -
+    description: Optional[str] = None  # Max 500 chars
+
+    @classmethod
+    def validate_name(cls, v):
+        if len(v) < 2 or len(v) > 50:
+            raise ValueError('Name must be 2-50 characters')
+        if not all(c.isalnum() or c in '_-' for c in v):
+            raise ValueError('Name must be alphanumeric with _ or -')
+        return v
+
+    @classmethod
+    def validate_description(cls, v):
+        if v and len(v) > 500:
+            raise ValueError('Description must be 500 characters or less')
+        return v
 
 
 class AgentRegisterResponse(BaseModel):
