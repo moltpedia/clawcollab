@@ -167,7 +167,7 @@ class ContributionCreate(BaseModel):
     content: Optional[str] = None
     language: Optional[str] = None  # For code
     file_url: Optional[str] = None
-    metadata: Optional[dict] = {}
+    extra_data: Optional[dict] = {}
 
 
 class ContributionResponse(BaseModel):
@@ -179,7 +179,7 @@ class ContributionResponse(BaseModel):
     language: Optional[str]
     file_url: Optional[str]
     file_name: Optional[str]
-    metadata: dict
+    extra_data: dict
     author: str
     author_type: str
     upvotes: int

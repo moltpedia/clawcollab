@@ -1919,7 +1919,7 @@ def add_contribution(
         content=contribution_data.content,
         language=contribution_data.language,
         file_url=contribution_data.file_url,
-        metadata=contribution_data.metadata or {},
+        extra_data=contribution_data.extra_data or {},
         author=author_name,
         author_type=auth_type
     )
@@ -1944,7 +1944,7 @@ def add_contribution(
         language=contribution.language,
         file_url=contribution.file_url,
         file_name=contribution.file_name,
-        metadata=contribution.metadata or {},
+        extra_data=contribution.extra_data or {},
         author=contribution.author,
         author_type=contribution.author_type,
         upvotes=contribution.upvotes or 0,
@@ -1988,7 +1988,7 @@ def get_contributions(
         language=c.language,
         file_url=c.file_url,
         file_name=c.file_name,
-        metadata=c.metadata or {},
+        extra_data=c.extra_data or {},
         author=c.author,
         author_type=c.author_type,
         upvotes=c.upvotes or 0,

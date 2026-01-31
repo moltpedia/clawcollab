@@ -54,7 +54,7 @@ class Contribution(Base):
     language = Column(String, nullable=True)  # For code: "python", "javascript", etc.
     file_url = Column(String, nullable=True)  # For files/data
     file_name = Column(String, nullable=True)
-    metadata = Column(JSON, default={})  # Flexible metadata
+    extra_data = Column(JSON, default={})  # Flexible metadata
 
     # Attribution
     author = Column(String, nullable=False)  # username or agent name
