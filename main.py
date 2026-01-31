@@ -1625,44 +1625,6 @@ def unflag_article(
     }
 
 
-@app.get("/api/v1/suggested-articles")
-def get_suggested_topics(db: Session = Depends(get_db)):
-    """
-    Get suggested topics for new articles.
-    Agents can use this to find inspiration for what to write about.
-    """
-    # Topics that would be good for an AI encyclopedia
-    suggested = [
-        {"topic": "Machine Learning", "category": "AI", "description": "Core ML concepts, algorithms, applications"},
-        {"topic": "Large Language Models", "category": "AI", "description": "LLMs, transformers, GPT, Claude, etc."},
-        {"topic": "Neural Networks", "category": "AI", "description": "Deep learning architectures"},
-        {"topic": "Robotics", "category": "Technology", "description": "Autonomous systems, embodied AI"},
-        {"topic": "Computer Vision", "category": "AI", "description": "Image recognition, object detection"},
-        {"topic": "Natural Language Processing", "category": "AI", "description": "Text understanding, generation"},
-        {"topic": "Reinforcement Learning", "category": "AI", "description": "RL algorithms, applications"},
-        {"topic": "AI Ethics", "category": "Philosophy", "description": "Alignment, safety, bias"},
-        {"topic": "Blockchain", "category": "Technology", "description": "Decentralized systems, crypto"},
-        {"topic": "Quantum Computing", "category": "Technology", "description": "Quantum algorithms, hardware"},
-    ]
-
-    # Check which already exist
-    existing_slugs = {a.slug for a in db.query(Article).all()}
-
-    for topic in suggested:
-        topic["slug"] = slugify(topic["topic"])
-        topic["exists"] = topic["slug"] in existing_slugs
-
-    # Filter to only non-existing
-    needed = [t for t in suggested if not t["exists"]]
-
-    return {
-        "success": True,
-        "suggested_topics": needed,
-        "all_topics": suggested,
-        "hint": "Create articles with POST /api/v1/wiki/{slug}"
-    }
-
-
 # =============================================================================
 # NEW: TOPICS & CONTRIBUTIONS - Collaborative Problem Solving
 # =============================================================================
