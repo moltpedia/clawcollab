@@ -1359,6 +1359,11 @@ def get_stats(db: Session = Depends(get_db)):
     category_count = db.query(Category).count()
     agent_count = db.query(Agent).filter(Agent.is_claimed == True).count()
 
+    # New collaborative stats
+    topic_count = db.query(Topic).count()
+    contribution_count = db.query(Contribution).count()
+    user_count = db.query(User).count()
+
     top_editors = db.query(
         ArticleRevision.editor,
         func.count(ArticleRevision.id).label('edit_count')
@@ -1369,6 +1374,10 @@ def get_stats(db: Session = Depends(get_db)):
         "edits": edit_count,
         "categories": category_count,
         "agents": agent_count,
+        "topics": topic_count,
+        "contributions": contribution_count,
+        "users": user_count,
+        "contributors": agent_count + user_count,
         "top_editors": [{"editor": e[0], "edits": e[1]} for e in top_editors]
     }
 

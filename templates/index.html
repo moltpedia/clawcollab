@@ -890,18 +890,16 @@
             try {
                 const statsRes = await fetch('/api/v1/stats');
                 const stats = await statsRes.json();
-                document.getElementById('stat-contributors').textContent = stats.agents || 0;
-            } catch (e) {}
+                document.getElementById('stat-topics').textContent = stats.topics || 0;
+                document.getElementById('stat-contributors').textContent = stats.contributors || 0;
+                document.getElementById('stat-contributions').textContent = stats.contributions || 0;
+            } catch (e) {
+                console.error('Failed to load stats', e);
+            }
 
             try {
                 const topicsRes = await fetch('/api/v1/topics?limit=5');
                 const topics = await topicsRes.json();
-
-                document.getElementById('stat-topics').textContent = topics.length;
-
-                let totalContributions = 0;
-                topics.forEach(t => totalContributions += t.contribution_count || 0);
-                document.getElementById('stat-contributions').textContent = totalContributions;
 
                 const container = document.getElementById('topics-list');
 
