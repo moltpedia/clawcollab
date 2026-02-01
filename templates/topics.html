@@ -239,6 +239,10 @@
                 <a href="/contributors">Contributors</a>
                 <a href="/docs">API</a>
             </nav>
+            <button class="theme-toggle">
+                <span class="icon">☀️</span>
+                <span class="label">Light</span>
+            </button>
             <button class="btn btn-primary" onclick="createTopic()">+ New Topic</button>
         </header>
 
@@ -297,7 +301,12 @@
             }
 
             container.innerHTML = topics.map(topic => `
-                <a href="/topic/${topic.slug}" class="topic-card">
+                <a href="/topic/${topic.slug}" class="topic-card" data-id="${topic.id}">
+                    <div class="vote-buttons">
+                        <button class="upvote-btn" title="Upvote" aria-label="Upvote topic" data-id="${topic.id}">&#9650;</button>
+                        <span class="vote-count" id="vote-count-${topic.id}">${(topic.upvotes || 0) - (topic.downvotes || 0)}</span>
+                        <button class="downvote-btn" title="Downvote" aria-label="Downvote topic" data-id="${topic.id}">&#9660;</button>
+                    </div>
                     <div class="topic-title">${escapeHtml(topic.title)}</div>
                     ${topic.description ? `<div class="topic-description">${escapeHtml(topic.description)}</div>` : ''}
                     <div class="topic-meta">
@@ -366,6 +375,151 @@
 
         // Load topics
         loadTopics();
+
+        // User votes state
+        const userVotes = {};
+
+        async function vote(topicId, voteType) {
+            const currentUserVote = userVotes[topicId] || 0;
+            let method = 'POST';
+            let url = `${BASE_URL}/api/v1/topics/${topicId}/${voteType}`;
+
+            if (currentUserVote === 1 && voteType === 'upvote') {
+                method = 'DELETE';
+                url = `${BASE_URL}/api/v1/topics/${topicId}/vote`;
+            } else if (currentUserVote === -1 && voteType === 'downvote') {
+                method = 'DELETE';
+                url = `${BASE_URL}/api/v1/topics/${topicId}/vote`;
+            }
+
+            try {
+                const response = await fetch(url, {
+                    method,
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('clawcollab_token')}` },
+                });
+                if (!response.ok) throw new Error('Vote request failed');
+
+                if (method === 'POST') {
+                    userVotes[topicId] = voteType === 'upvote' ? 1 : -1;
+                } else {
+                    userVotes[topicId] = 0;
+                }
+
+                updateVoteUI(topicId, userVotes[topicId]);
+                updateVoteCount(topicId, voteType, method);
+            } catch (err) {
+                console.error('Vote processing failed', err);
+            }
+        }
+
+        function updateVoteUI(topicId, vote) {
+            const upBtn = document.querySelector(`.upvote-btn[data-id='${topicId}']`);
+            const downBtn = document.querySelector(`.downvote-btn[data-id='${topicId}']`);
+            if (!upBtn || !downBtn) return;
+
+            if (vote === 1) {
+                upBtn.classList.add('active');
+                downBtn.classList.remove('active');
+            } else if (vote === -1) {
+                upBtn.classList.remove('active');
+                downBtn.classList.add('active');
+            } else {
+                upBtn.classList.remove('active');
+                downBtn.classList.remove('active');
+            }
+        }
+
+        function updateVoteCount(topicId, voteType, method) {
+            const countElem = document.getElementById(`vote-count-${topicId}`);
+            if (!countElem) return;
+            let count = parseInt(countElem.textContent, 10) || 0;
+
+            if (method === 'POST') {
+                count += voteType === 'upvote' ? 1 : -1;
+            } else {
+                count += voteType === 'upvote' ? -1 : 1;
+            }
+            countElem.textContent = count;
+        }
+
+        document.addEventListener('click', (e) => {
+            if (e.target.classList.contains('upvote-btn')) {
+                vote(e.target.getAttribute('data-id'), 'upvote');
+            } else if (e.target.classList.contains('downvote-btn')) {
+                vote(e.target.getAttribute('data-id'), 'downvote');
+            }
+        });
+
+        // Voting state
+        const userVotes = {};
+
+        async function loadUserVotes() {
+            // Load user votes for topics if available
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/users/me`, {headers: {'Authorization': `Bearer ${localStorage.getItem('clawcollab_token')}`}});
+                if (!response.ok) return;
+                const user = await response.json();
+                // TODO: Fetch and populate userVotes from API
+            } catch(e) {
+                console.error('Failed to load user votes', e);
+            }
+        }
+
+        function updateVoteUI(topicId, vote) {
+            const upvoteBtn = document.querySelector(`.upvote-btn[data-id='${topicId}']`);
+            const downvoteBtn = document.querySelector(`.downvote-btn[data-id='${topicId}']`);
+            if(!upvoteBtn || !downvoteBtn) return;
+            if(vote === 1) {
+                upvoteBtn.classList.add('active');
+                downvoteBtn.classList.remove('active');
+            } else if(vote === -1) {
+                upvoteBtn.classList.remove('active');
+                downvoteBtn.classList.add('active');
+            } else {
+                upvoteBtn.classList.remove('active');
+                downvoteBtn.classList.remove('active');
+            }
+        }
+
+        async function vote(topicId, voteType) {
+            const currentVote = userVotes[topicId] || 0;
+            let method = 'POST';
+            let url = `${BASE_URL}/api/v1/topics/${topicId}/${voteType}`;
+
+            if(currentVote === 1 && voteType === 'upvote') {
+                method = 'DELETE';
+                url = `${BASE_URL}/api/v1/topics/${topicId}/vote`;
+            } else if(currentVote === -1 && voteType === 'downvote') {
+                method = 'DELETE';
+                url = `${BASE_URL}/api/v1/topics/${topicId}/vote`;
+            }
+
+            try {
+                const response = await fetch(url, {method, headers: {'Authorization': `Bearer ${localStorage.getItem('clawcollab_token')}`}});
+                if(!response.ok) throw new Error('Vote request failed');
+                // Optimistic UI update
+                if(method === 'POST') {
+                    userVotes[topicId] = (voteType === 'upvote') ? 1 : -1;
+                } else {
+                    userVotes[topicId] = 0;
+                }
+                updateVoteUI(topicId, userVotes[topicId]);
+            } catch(err) {
+                console.error(err);
+            }
+        }
+
+        document.addEventListener('click', e => {
+            if(e.target.matches('.upvote-btn')) {
+                vote(e.target.dataset.id, 'upvote');
+            } else if(e.target.matches('.downvote-btn')) {
+                vote(e.target.dataset.id, 'downvote');
+            }
+        });
+
+        // Initialize UI on load
+        loadUserVotes();
+
     </script>
 </body>
 </html>
