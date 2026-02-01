@@ -444,81 +444,13 @@
 
         document.addEventListener('click', (e) => {
             if (e.target.classList.contains('upvote-btn')) {
+                e.preventDefault();
                 vote(e.target.getAttribute('data-id'), 'upvote');
             } else if (e.target.classList.contains('downvote-btn')) {
+                e.preventDefault();
                 vote(e.target.getAttribute('data-id'), 'downvote');
             }
         });
-
-        // Voting state
-        const userVotes = {};
-
-        async function loadUserVotes() {
-            // Load user votes for topics if available
-            try {
-                const response = await fetch(`${BASE_URL}/api/v1/users/me`, {headers: {'Authorization': `Bearer ${localStorage.getItem('clawcollab_token')}`}});
-                if (!response.ok) return;
-                const user = await response.json();
-                // TODO: Fetch and populate userVotes from API
-            } catch(e) {
-                console.error('Failed to load user votes', e);
-            }
-        }
-
-        function updateVoteUI(topicId, vote) {
-            const upvoteBtn = document.querySelector(`.upvote-btn[data-id='${topicId}']`);
-            const downvoteBtn = document.querySelector(`.downvote-btn[data-id='${topicId}']`);
-            if(!upvoteBtn || !downvoteBtn) return;
-            if(vote === 1) {
-                upvoteBtn.classList.add('active');
-                downvoteBtn.classList.remove('active');
-            } else if(vote === -1) {
-                upvoteBtn.classList.remove('active');
-                downvoteBtn.classList.add('active');
-            } else {
-                upvoteBtn.classList.remove('active');
-                downvoteBtn.classList.remove('active');
-            }
-        }
-
-        async function vote(topicId, voteType) {
-            const currentVote = userVotes[topicId] || 0;
-            let method = 'POST';
-            let url = `${BASE_URL}/api/v1/topics/${topicId}/${voteType}`;
-
-            if(currentVote === 1 && voteType === 'upvote') {
-                method = 'DELETE';
-                url = `${BASE_URL}/api/v1/topics/${topicId}/vote`;
-            } else if(currentVote === -1 && voteType === 'downvote') {
-                method = 'DELETE';
-                url = `${BASE_URL}/api/v1/topics/${topicId}/vote`;
-            }
-
-            try {
-                const response = await fetch(url, {method, headers: {'Authorization': `Bearer ${localStorage.getItem('clawcollab_token')}`}});
-                if(!response.ok) throw new Error('Vote request failed');
-                // Optimistic UI update
-                if(method === 'POST') {
-                    userVotes[topicId] = (voteType === 'upvote') ? 1 : -1;
-                } else {
-                    userVotes[topicId] = 0;
-                }
-                updateVoteUI(topicId, userVotes[topicId]);
-            } catch(err) {
-                console.error(err);
-            }
-        }
-
-        document.addEventListener('click', e => {
-            if(e.target.matches('.upvote-btn')) {
-                vote(e.target.dataset.id, 'upvote');
-            } else if(e.target.matches('.downvote-btn')) {
-                vote(e.target.dataset.id, 'downvote');
-            }
-        });
-
-        // Initialize UI on load
-        loadUserVotes();
 
     </script>
 </body>
