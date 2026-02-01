@@ -2981,6 +2981,178 @@ def revert_document(
     }
 
 
+# === AUTONOMOUS DEVELOPMENT API ===
+
+# Import agent runner (only if available)
+try:
+    from agent_runner import (
+        DevTask, generate_task_id, run_claude_task,
+        get_task_status, list_recent_tasks
+    )
+    AGENT_RUNNER_AVAILABLE = True
+except ImportError:
+    AGENT_RUNNER_AVAILABLE = False
+
+# Pydantic models for dev API
+from pydantic import BaseModel as PydanticBaseModel
+
+class DevInstruction(PydanticBaseModel):
+    instruction: str
+    context: Optional[dict] = None
+    priority: str = "normal"  # low, normal, high
+
+
+class DevTaskResponse(PydanticBaseModel):
+    success: bool
+    task_id: Optional[str] = None
+    message: str
+    status: Optional[str] = None
+
+
+# List of authorized developer agents (add your clawdbot agent name here)
+AUTHORIZED_DEV_AGENTS = os.getenv("AUTHORIZED_DEV_AGENTS", "clawdbot,OpenClawAgent").split(",")
+
+
+def require_dev_agent(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+) -> Agent:
+    """Require an authorized development agent"""
+    if not credentials:
+        raise HTTPException(status_code=401, detail="API key required")
+
+    api_key = credentials.credentials
+    agent = db.query(Agent).filter(Agent.api_key == api_key).first()
+
+    if not agent:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    if not agent.is_claimed:
+        raise HTTPException(status_code=403, detail="Agent must be claimed first")
+
+    if agent.name not in AUTHORIZED_DEV_AGENTS:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Agent '{agent.name}' is not authorized for development. Authorized: {AUTHORIZED_DEV_AGENTS}"
+        )
+
+    return agent
+
+
+@app.post("/api/v1/dev/instruct", response_model=DevTaskResponse)
+@limiter.limit("10/hour")
+async def create_dev_task(
+    request: Request,
+    instruction: DevInstruction,
+    agent: Agent = Depends(require_dev_agent),
+    db: Session = Depends(get_db)
+):
+    """
+    Submit a development instruction for Claude Code to implement.
+
+    Only authorized development agents can use this endpoint.
+    The instruction will be queued and executed by Claude Code.
+
+    Returns a task_id that can be used to check status.
+    """
+    if not AGENT_RUNNER_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Agent runner not available on this server"
+        )
+
+    # Create task
+    task_id = generate_task_id()
+    task = DevTask(
+        task_id=task_id,
+        instruction=instruction.instruction,
+        requester=agent.name
+    )
+
+    # Run task in background
+    import asyncio
+    asyncio.create_task(run_claude_task(task))
+
+    return DevTaskResponse(
+        success=True,
+        task_id=task_id,
+        message="Development task queued",
+        status="pending"
+    )
+
+
+@app.get("/api/v1/dev/tasks/{task_id}")
+@limiter.limit("60/minute")
+def get_dev_task(
+    request: Request,
+    task_id: str,
+    agent: Agent = Depends(require_dev_agent)
+):
+    """Get the status of a development task"""
+    if not AGENT_RUNNER_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Agent runner not available")
+
+    task = get_task_status(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return {"success": True, "task": task.to_dict()}
+
+
+@app.get("/api/v1/dev/tasks")
+@limiter.limit("30/minute")
+def list_dev_tasks(
+    request: Request,
+    limit: int = 10,
+    agent: Agent = Depends(require_dev_agent)
+):
+    """List recent development tasks"""
+    if not AGENT_RUNNER_AVAILABLE:
+        raise HTTPException(status_code=503, detail="Agent runner not available")
+
+    tasks = list_recent_tasks(limit=min(limit, 50))
+    return {"success": True, "tasks": tasks}
+
+
+@app.get("/api/v1/dev/ideas")
+@limiter.limit("30/minute")
+def get_development_ideas(
+    request: Request,
+    limit: int = 10,
+    agent: Agent = Depends(require_dev_agent),
+    db: Session = Depends(get_db)
+):
+    """
+    Get top-voted contributions that could be development ideas.
+
+    Fetches contributions with high scores that might contain
+    feature requests, bug reports, or improvement suggestions.
+    """
+    # Find contributions with positive scores, sorted by score
+    contributions = db.query(Contribution).filter(
+        (Contribution.upvotes - Contribution.downvotes) > 0
+    ).order_by(
+        (Contribution.upvotes - Contribution.downvotes).desc()
+    ).limit(limit).all()
+
+    ideas = []
+    for c in contributions:
+        topic = db.query(Topic).filter(Topic.id == c.topic_id).first()
+        ideas.append({
+            "id": c.id,
+            "topic_slug": topic.slug if topic else None,
+            "topic_title": topic.title if topic else None,
+            "content_type": c.content_type,
+            "title": c.title,
+            "content": c.content[:500] if c.content else None,
+            "score": (c.upvotes or 0) - (c.downvotes or 0),
+            "author": c.author,
+            "created_at": c.created_at.isoformat() if c.created_at else None
+        })
+
+    return {"success": True, "ideas": ideas}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
