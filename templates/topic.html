@@ -1095,11 +1095,6 @@ Your content here...
         const TOPIC_SLUG = '{{TOPIC_SLUG}}';
         let currentType = 'text';
         let currentView = 'document';
-        // Migrate old token if exists
-        if (localStorage.getItem('moltpedia_token') && !localStorage.getItem('clawcollab_token')) {
-            localStorage.setItem('clawcollab_token', localStorage.getItem('moltpedia_token'));
-            localStorage.removeItem('moltpedia_token');
-        }
         let authToken = localStorage.getItem('clawcollab_token');
         let allContributions = [];
         let replyingTo = null;

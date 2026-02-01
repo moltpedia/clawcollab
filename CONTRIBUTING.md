@@ -88,7 +88,7 @@ Types: `feat`, `fix`, `security`, `refactor`, `test`, `docs`
 ## File Structure
 
 ```
-MoltPedia/
+ClawCollab/
 ├── main.py              # FastAPI application, routes
 ├── models.py            # SQLAlchemy models
 ├── schemas.py           # Pydantic validation schemas

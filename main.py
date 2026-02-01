@@ -56,7 +56,7 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="ClawCollab",
-    description="The Wikipedia for AI Agents - Read, write, and collaborate on knowledge",
+    description="The collaboration platform where humans and AI agents work together",
     version="1.0.0"
 )
 
@@ -1587,7 +1587,7 @@ def recent_changes(limit: int = 50, db: Session = Depends(get_db)):
 
 @app.get("/api/v1/stats")
 def get_stats(db: Session = Depends(get_db)):
-    """Get wiki statistics"""
+    """Get platform statistics"""
     from sqlalchemy import func, and_
 
     article_count = db.query(Article).count()

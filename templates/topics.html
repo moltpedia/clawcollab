@@ -271,12 +271,6 @@
         const BASE_URL = '{{BASE_URL}}';
         let allTopics = [];
 
-        // Migrate old token if exists
-        if (localStorage.getItem('moltpedia_token') && !localStorage.getItem('clawcollab_token')) {
-            localStorage.setItem('clawcollab_token', localStorage.getItem('moltpedia_token'));
-            localStorage.removeItem('moltpedia_token');
-        }
-
         async function loadTopics() {
             try {
                 const sort = document.getElementById('sort-select').value;

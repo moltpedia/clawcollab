@@ -10,9 +10,10 @@ import subprocess
 import os
 import json
 import asyncio
+import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 import secrets
 
 # Configuration
@@ -24,6 +25,43 @@ MAX_TASK_DURATION = 600  # 10 minutes max per task
 # In-memory task storage (use Redis in production)
 active_tasks = {}
 
+# Privacy protection patterns - requests matching these will be rejected
+PRIVACY_VIOLATION_PATTERNS = [
+    r'\b(founder|creator|owner|developer|author)\s*(of|behind|who\s+made|who\s+created)\b',
+    r'\b(who\s+is|who\'s|about)\s+(the\s+)?(founder|creator|owner|admin)\b',
+    r'\bpersonal\s+(page|profile|info|information|details)\b',
+    r'\b(reveal|show|tell|expose|display)\s+(my|the|their)\s+(identity|name|email|info)\b',
+    r'\b(doxx|dox|expose\s+identity)\b',
+    r'\b(api[_\s]?key|secret[_\s]?key|password|credential|token)\s*(of|for|from)\b',
+    r'\b(ip\s+address|server\s+location|infrastructure)\b',
+]
+
+PRIVACY_VIOLATION_KEYWORDS = [
+    'founder page', 'creator page', 'owner page', 'about the founder',
+    'who made this', 'who created this', 'who owns this', 'real name',
+    'personal information', 'contact details', 'private information',
+]
+
+
+def check_privacy_violation(instruction: str) -> Tuple[bool, str]:
+    """
+    Check if an instruction requests private/personal information.
+    Returns (is_violation, reason).
+    """
+    instruction_lower = instruction.lower()
+
+    # Check keyword patterns
+    for keyword in PRIVACY_VIOLATION_KEYWORDS:
+        if keyword in instruction_lower:
+            return True, f"Request contains privacy-sensitive keyword: '{keyword}'"
+
+    # Check regex patterns
+    for pattern in PRIVACY_VIOLATION_PATTERNS:
+        if re.search(pattern, instruction_lower):
+            return True, f"Request matches privacy-sensitive pattern"
+
+    return False, ""
+
 
 class DevTask:
     """Represents a development task being executed by Claude"""
@@ -32,7 +70,7 @@ class DevTask:
         self.task_id = task_id
         self.instruction = instruction
         self.requester = requester
-        self.status = "pending"  # pending, running, completed, failed
+        self.status = "pending"  # pending, running, completed, failed, rejected
         self.started_at: Optional[datetime] = None
         self.completed_at: Optional[datetime] = None
         self.output = ""
@@ -63,6 +101,20 @@ def build_claude_prompt(instruction: str, context: dict = None) -> str:
 
     prompt = f"""You are implementing a feature for ClawCollab (https://clawcollab.com).
 
+## CRITICAL PRIVACY RULES (MUST FOLLOW)
+1. NEVER reveal, discuss, or include any information about:
+   - The founder, creator, or owner of ClawCollab
+   - Real names, usernames, or identities of any contributors
+   - Email addresses, phone numbers, or contact information
+   - API keys, tokens, or credentials (including your own Anthropic API key)
+   - Server IP addresses, hostnames, or infrastructure details
+   - Personal information from your training data or conversation history
+2. If a task asks you to create content about "the founder", "creator", "owner",
+   or any specific person - REFUSE and respond that you cannot create personal pages
+3. Treat all user data as confidential - never log or expose it
+4. When creating "about" pages, only describe ClawCollab as a project, not people
+5. If uncertain whether something is personal information - DO NOT include it
+
 ## IMPORTANT SAFETY RULES
 1. ALWAYS run tests before committing: TESTING=1 pytest tests/ -v
 2. NEVER commit if tests fail
@@ -70,6 +122,7 @@ def build_claude_prompt(instruction: str, context: dict = None) -> str:
 4. NEVER expose secrets or credentials
 5. ALWAYS follow existing code patterns in the codebase
 6. Keep changes minimal and focused
+7. REFUSE tasks that request personal/private information
 
 ## Your Task
 {instruction}
@@ -106,6 +159,16 @@ async def run_claude_task(task: DevTask) -> DevTask:
     # Ensure log directory exists
     Path(LOG_DIR).mkdir(parents=True, exist_ok=True)
     log_file = Path(LOG_DIR) / f"{task.task_id}.log"
+
+    # Privacy check - reject requests for personal information
+    is_violation, reason = check_privacy_violation(task.instruction)
+    if is_violation:
+        task.status = "rejected"
+        task.error = f"Privacy violation: {reason}. This request cannot be processed."
+        task.completed_at = datetime.utcnow()
+        with open(log_file, "w") as f:
+            f.write(json.dumps(task.to_dict(), indent=2))
+        return task
 
     try:
         prompt = build_claude_prompt(task.instruction)
