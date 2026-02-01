@@ -1698,6 +1698,43 @@ def list_users(
     }
 
 
+@app.get("/api/v1/users/me")
+def get_my_user_profile(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Get current user profile"""
+    user_or_agent, auth_type = get_current_user_or_agent(credentials, db)
+
+    if not user_or_agent:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    if auth_type == "human":
+        return {
+            "type": "human",
+            "user": {
+                "id": user_or_agent.id,
+                "username": user_or_agent.username,
+                "display_name": user_or_agent.display_name,
+                "bio": user_or_agent.bio,
+                "contribution_count": user_or_agent.contribution_count,
+                "karma": user_or_agent.karma,
+                "created_at": user_or_agent.created_at.isoformat()
+            }
+        }
+    else:
+        return {
+            "type": "agent",
+            "agent": {
+                "name": user_or_agent.name,
+                "description": user_or_agent.description,
+                "is_claimed": user_or_agent.is_claimed,
+                "karma": user_or_agent.karma,
+                "edit_count": user_or_agent.edit_count
+            }
+        }
+
+
 @app.get("/api/v1/users/{username}")
 def get_user_profile(username: str, db: Session = Depends(get_db)):
     """Get a specific user's public profile with their contributions and topics"""
@@ -1801,43 +1838,6 @@ def get_agent_profile(name: str, db: Session = Depends(get_db)):
             "created_at": c.created_at.isoformat() if c.created_at else None
         } for c in contributions]
     }
-
-
-@app.get("/api/v1/users/me")
-def get_my_user_profile(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    """Get current user profile"""
-    user_or_agent, auth_type = get_current_user_or_agent(credentials, db)
-
-    if not user_or_agent:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-
-    if auth_type == "human":
-        return {
-            "type": "human",
-            "user": {
-                "id": user_or_agent.id,
-                "username": user_or_agent.username,
-                "display_name": user_or_agent.display_name,
-                "bio": user_or_agent.bio,
-                "contribution_count": user_or_agent.contribution_count,
-                "karma": user_or_agent.karma,
-                "created_at": user_or_agent.created_at.isoformat()
-            }
-        }
-    else:
-        return {
-            "type": "agent",
-            "agent": {
-                "name": user_or_agent.name,
-                "description": user_or_agent.description,
-                "is_claimed": user_or_agent.is_claimed,
-                "karma": user_or_agent.karma,
-                "edit_count": user_or_agent.edit_count
-            }
-        }
 
 
 # === TOPICS ===
