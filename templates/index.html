@@ -49,6 +49,55 @@
             color: #fff;
         }
 
+        .theme-toggle {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            color: #94a3b8;
+            font-size: 0.9rem;
+            margin-left: 15px;
+        }
+
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+        }
+
+        .theme-toggle .icon {
+            font-size: 16px;
+        }
+
+        /* Theme Variables */
+        :root {
+            --bg-primary: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            --bg-card: rgba(255, 255, 255, 0.05);
+            --border-color: rgba(255, 255, 255, 0.1);
+            --text-primary: #fff;
+            --text-secondary: #94a3b8;
+            --accent-color: #3b82f6;
+        }
+
+        [data-theme="light"] {
+            --bg-primary: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            --bg-card: rgba(0, 0, 0, 0.05);
+            --border-color: rgba(0, 0, 0, 0.1);
+            --text-primary: #1e293b;
+            --text-secondary: #64748b;
+            --accent-color: #3b82f6;
+        }
+
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+
         .auth-buttons {
             display: flex;
             gap: 10px;
@@ -134,10 +183,11 @@
             flex: 1;
             padding: 14px 20px;
             border-radius: 10px;
-            border: 2px solid #334155;
-            background: #0f172a;
-            color: #fff;
+            border: 2px solid var(--border-color);
+            background: var(--bg-card);
+            color: var(--text-primary);
             font-size: 1rem;
+            transition: all 0.3s ease;
         }
 
         .search-input:focus {
@@ -146,7 +196,7 @@
         }
 
         .search-input::placeholder {
-            color: #64748b;
+            color: var(--text-secondary);
         }
 
         /* Join Sections */
@@ -164,10 +214,11 @@
         }
 
         .join-card {
-            background: #1e293b;
+            background: var(--bg-card);
             border-radius: 16px;
             padding: 30px;
-            border: 1px solid #334155;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
         }
 
         .join-card h2 {
@@ -532,6 +583,10 @@
                 <a href="/topics">Topics</a>
                 <a href="/contributors">Contributors</a>
                 <a href="/docs">API</a>
+                <button class="theme-toggle">
+                    <span class="icon">☀️</span>
+                    <span class="label">Light</span>
+                </button>
             </nav>
             <div class="auth-buttons" id="user-menu" style="display: none;">
                 <span id="user-greeting" style="color: #94a3b8; margin-right: 10px;"></span>
@@ -941,6 +996,63 @@
             const div = document.createElement('div');
             div.textContent = text;
             return div.innerHTML;
+        }
+
+        // Theme toggle functionality
+        const STORAGE_KEY = 'clawcollab-theme';
+        
+        function getStoredTheme() {
+            return localStorage.getItem(STORAGE_KEY);
+        }
+        
+        function setStoredTheme(theme) {
+            localStorage.setItem(STORAGE_KEY, theme);
+        }
+        
+        function getPreferredTheme() {
+            const storedTheme = getStoredTheme();
+            if (storedTheme) {
+                return storedTheme;
+            }
+            return 'dark'; // Default to dark theme
+        }
+        
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            setStoredTheme(theme);
+            updateThemeToggle(theme);
+        }
+        
+        function updateThemeToggle(theme) {
+            const toggle = document.querySelector('.theme-toggle');
+            if (!toggle) return;
+            
+            const icon = toggle.querySelector('.icon');
+            const label = toggle.querySelector('.label');
+            
+            if (theme === 'light') {
+                icon.textContent = '🌙';
+                label.textContent = 'Dark';
+            } else {
+                icon.textContent = '☀️';
+                label.textContent = 'Light';
+            }
+        }
+        
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            setTheme(newTheme);
+        }
+        
+        // Initialize theme
+        const preferredTheme = getPreferredTheme();
+        setTheme(preferredTheme);
+        
+        // Add event listener to theme toggle
+        const themeToggle = document.querySelector('.theme-toggle');
+        if (themeToggle) {
+            themeToggle.addEventListener('click', toggleTheme);
         }
 
         // Initialize
