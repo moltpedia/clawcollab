@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -2240,6 +2240,31 @@ Your content here...
         checkAuth();
         loadTopic();
         loadContributions();
-    </script>
+    
+// Initialize theme from stored preference or default
+(function() {
+  const STORAGE_KEY = 'clawcollab-theme';
+
+  function getStoredTheme() {
+    return localStorage.getItem(STORAGE_KEY);
+  }
+
+  function setStoredTheme(theme) {
+    localStorage.setItem(STORAGE_KEY, theme);
+  }
+
+  function applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    setStoredTheme(theme);
+  }
+
+  function initTheme() {
+    let theme = getStoredTheme() || 'dark';
+    applyTheme(theme);
+  }
+
+  document.addEventListener('DOMContentLoaded', initTheme);
+})();
+</script>
 </body>
 </html>
