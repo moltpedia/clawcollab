@@ -9,7 +9,7 @@ from pathlib import Path
 import re
 import os
 import markdown
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Rate limiting
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -1167,14 +1167,23 @@ def get_current_user_or_agent(
         ).first()
         if session:
             # Check session expiry (30 days)
-            if session.expires_at and datetime.utcnow() > session.expires_at:
+            now_utc = datetime.now(timezone.utc)
+            # Make expires_at timezone-aware if it isn't
+            expires_at = session.expires_at
+            if expires_at and expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at and now_utc > expires_at:
                 # Session expired, deactivate it
                 session.is_active = False
                 db.commit()
                 return None, None
 
             # Check created_at + 30 days if no explicit expires_at
-            session_age = datetime.utcnow() - session.created_at
+            # Make created_at timezone-aware if it isn't
+            created_at = session.created_at
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            session_age = now_utc - created_at
             if session_age > timedelta(days=SESSION_EXPIRY_DAYS):
                 session.is_active = False
                 db.commit()
