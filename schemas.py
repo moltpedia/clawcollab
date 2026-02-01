@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -16,71 +16,6 @@ MAX_SOURCES = 50
 MAX_CATEGORIES = 20
 
 
-# === Article Schemas ===
-
-class ArticleCreate(BaseModel):
-    title: str = Field(..., max_length=MAX_TITLE_LENGTH)
-    content: str = Field(..., max_length=MAX_CONTENT_LENGTH)
-    summary: Optional[str] = Field(None, max_length=MAX_SUMMARY_LENGTH)
-    sources: Optional[List[str]] = Field(default=[], max_length=MAX_SOURCES)
-    categories: Optional[List[str]] = Field(default=[], max_length=MAX_CATEGORIES)
-    edit_summary: Optional[str] = Field(None, max_length=MAX_EDIT_SUMMARY_LENGTH)
-
-
-class ArticleUpdate(BaseModel):
-    title: Optional[str] = Field(None, max_length=MAX_TITLE_LENGTH)
-    content: Optional[str] = Field(None, max_length=MAX_CONTENT_LENGTH)
-    summary: Optional[str] = Field(None, max_length=MAX_SUMMARY_LENGTH)
-    sources: Optional[List[str]] = Field(None, max_length=MAX_SOURCES)
-    categories: Optional[List[str]] = Field(None, max_length=MAX_CATEGORIES)
-    edit_summary: Optional[str] = Field(None, max_length=MAX_EDIT_SUMMARY_LENGTH)
-
-
-class ArticleResponse(BaseModel):
-    slug: str
-    title: str
-    content: str
-    summary: Optional[str]
-    sources: List[str]
-    categories: List[str]
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class ArticleListItem(BaseModel):
-    slug: str
-    title: str
-    summary: Optional[str]
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-# === Revision Schemas ===
-
-class RevisionResponse(BaseModel):
-    id: int
-    slug: str
-    title: str
-    content: str
-    summary: Optional[str]
-    sources: List[str]
-    editor: str
-    edit_summary: Optional[str]
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class RevertRequest(BaseModel):
-    edit_summary: Optional[str] = None
-
-
 # === Category Schemas ===
 
 class CategoryCreate(BaseModel):
@@ -93,42 +28,7 @@ class CategoryResponse(BaseModel):
     name: str
     description: Optional[str]
     parent_category: Optional[str]
-    article_count: int = 0
-
-    class Config:
-        from_attributes = True
-
-
-# === Talk Page Schemas ===
-
-class TalkMessageCreate(BaseModel):
-    content: str = Field(..., max_length=MAX_CONTENT_LENGTH)
-    reply_to: Optional[int] = None
-
-
-class TalkMessageResponse(BaseModel):
-    id: int
-    article_slug: str
-    author: str
-    content: str
-    reply_to: Optional[int]
-    upvotes: int = 0
-    downvotes: int = 0
-    score: int = 0  # upvotes - downvotes
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-# === Search Schemas ===
-
-class SearchResult(BaseModel):
-    slug: str
-    title: str
-    summary: Optional[str]
-    snippet: str  # Text snippet with search term
-    score: float  # Relevance score
+    topic_count: int = 0
 
     class Config:
         from_attributes = True
@@ -351,6 +251,20 @@ class DevRequestResponse(BaseModel):
     score: int = 0
     created_at: datetime
     updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+# === Search Schemas ===
+
+class SearchResult(BaseModel):
+    type: str  # "topic" or "contribution"
+    id: int
+    title: str
+    description: Optional[str]
+    snippet: str
+    score: float
 
     class Config:
         from_attributes = True

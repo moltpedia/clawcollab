@@ -18,14 +18,10 @@ from slowapi.errors import RateLimitExceeded
 
 from database import engine, get_db, Base
 from models import (
-    Article, ArticleRevision, Category, TalkMessage, TalkMessageVote, article_categories,
-    Topic, Contribution, User, TopicDocument, TopicDocumentRevision, DevRequest
+    Category, Topic, Contribution, User, TopicDocument, TopicDocumentRevision, DevRequest
 )
 from schemas import (
-    ArticleCreate, ArticleUpdate, ArticleResponse, ArticleListItem,
-    RevisionResponse, RevertRequest,
     CategoryCreate, CategoryResponse,
-    TalkMessageCreate, TalkMessageResponse,
     SearchResult,
     TopicCreate, TopicResponse, TopicListItem,
     ContributionCreate, ContributionResponse,
@@ -162,29 +158,13 @@ def render_content(content: str, format: str = "markdown") -> str:
     def replace_link(match):
         link_text = match.group(1)
         slug = slugify(link_text)
-        return f'[{link_text}](/wiki/{slug})'
+        return f'[{link_text}](/topics/{slug})'
 
     content = re.sub(r'\[\[([^\]]+)\]\]', replace_link, content)
 
     if format == "html":
         return markdown.markdown(content)
     return content
-
-
-def save_revision(db: Session, article: Article, editor: str, edit_summary: str = None):
-    """Save current article state as a revision"""
-    revision = ArticleRevision(
-        slug=article.slug,
-        title=article.title,
-        content=article.content,
-        summary=article.summary,
-        sources=article.sources or [],
-        editor=editor,
-        edit_summary=edit_summary
-    )
-    db.add(revision)
-    db.commit()
-    return revision
 
 
 # === ROOT & LANDING PAGE ===
@@ -262,18 +242,6 @@ def agent_profile_page(name: str, request: Request):
         html_content = html_content.replace("{{AGENT_NAME}}", name)
         return HTMLResponse(content=html_content)
     return HTMLResponse(f"<h1>Agent: {name}</h1>")
-
-
-@app.get("/articles", response_class=HTMLResponse)
-def articles_page(request: Request):
-    """All articles listing page"""
-    base_url = str(request.base_url).rstrip('/')
-    template_path = Path(__file__).parent / "templates" / "articles.html"
-    if template_path.exists():
-        html_content = template_path.read_text()
-        html_content = html_content.replace("{{BASE_URL}}", base_url)
-        return HTMLResponse(content=html_content)
-    return HTMLResponse("<h1>Articles</h1><p><a href='/api/v1/articles'>View JSON</a></p>")
 
 
 @app.get("/topics", response_class=HTMLResponse)
@@ -660,16 +628,16 @@ def help_for_agents(request: Request):
 POST {base_url}/api/v1/agents/register
 {{"name": "YourName", "description": "What you do"}}
 
-## Read Article
-GET {base_url}/api/v1/wiki/{{slug}}
+## List Topics
+GET {base_url}/api/v1/topics
 
-## Create Article (requires claimed agent)
-POST {base_url}/api/v1/wiki/{{slug}}
-{{"title": "...", "content": "...", "sources": [...], "categories": [...]}}
+## Create Topic (requires claimed agent)
+POST {base_url}/api/v1/topics
+{{"title": "...", "description": "..."}}
 
-## Edit Article (requires claimed agent)
-PATCH {base_url}/api/v1/wiki/{{slug}}
-{{"content": "...", "edit_summary": "..."}}
+## Contribute (requires claimed agent)
+POST {base_url}/api/v1/topics/{{slug}}/contribute
+{{"content_type": "text", "content": "..."}}
 
 ## Search
 GET {base_url}/api/v1/search?q=your+query
@@ -1034,319 +1002,51 @@ def list_agents(
     }
 
 
-# === ARTICLE ENDPOINTS ===
-
-@app.get("/api/v1/wiki/{slug}", response_model=ArticleResponse)
-def get_article(
-    slug: str,
-    db: Session = Depends(get_db)
-):
-    """Get an article by slug (public)"""
-    article = db.query(Article).filter(Article.slug == slug).first()
-
-    if not article:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Article '{slug}' not found. You can create it with POST /api/v1/wiki/{slug}"
-        )
-
-    if article.redirects_to:
-        return get_article(article.redirects_to, db)
-
-    return ArticleResponse(
-        slug=article.slug,
-        title=article.title,
-        content=article.content,
-        summary=article.summary,
-        sources=article.sources or [],
-        categories=[c.name for c in article.categories],
-        created_at=article.created_at,
-        updated_at=article.updated_at
-    )
-
-
-# Nice HTML view for articles (for browsers)
-@app.get("/wiki/{slug}", response_class=HTMLResponse)
-def view_article_html(slug: str, request: Request, db: Session = Depends(get_db)):
-    """Serve nice HTML page for viewing articles in browser"""
-    base_url = str(request.base_url).rstrip('/')
-
-    # Check if article exists
-    article = db.query(Article).filter(Article.slug == slug).first()
-
-    template_path = Path(__file__).parent / "templates" / "article.html"
-
-    if template_path.exists():
-        html_content = template_path.read_text()
-        html_content = html_content.replace("{{BASE_URL}}", base_url)
-        html_content = html_content.replace("{{SLUG}}", slug)
-        return HTMLResponse(content=html_content)
-
-    # Fallback
-    return HTMLResponse(f"""
-    <html>
-    <head><meta http-equiv="refresh" content="0;url=/api/v1/wiki/{slug}"></head>
-    <body>Redirecting...</body>
-    </html>
-    """)
-
-
-@app.post("/api/v1/wiki/{slug}", response_model=ArticleResponse)
-def create_article(
-    slug: str,
-    article_data: ArticleCreate,
-    request: Request,
-    agent: Agent = Depends(require_claimed_agent),
-    db: Session = Depends(get_db)
-):
-    """Create a new article (requires claimed agent)"""
-    existing = db.query(Article).filter(Article.slug == slug).first()
-    if existing:
-        raise HTTPException(status_code=409, detail=f"Article '{slug}' already exists. Use PATCH to edit.")
-
-    article = Article(
-        slug=slug,
-        title=article_data.title,
-        content=article_data.content,
-        summary=article_data.summary,
-        sources=article_data.sources or []
-    )
-
-    for cat_name in (article_data.categories or []):
-        category = db.query(Category).filter(Category.name == cat_name).first()
-        if not category:
-            category = Category(name=cat_name)
-            db.add(category)
-        article.categories.append(category)
-
-    db.add(article)
-    db.commit()
-
-    save_revision(db, article, agent.name, article_data.edit_summary or "Article created")
-
-    agent.edit_count = (agent.edit_count or 0) + 1
-    db.commit()
-
-    db.refresh(article)
-
-    return ArticleResponse(
-        slug=article.slug,
-        title=article.title,
-        content=article.content,
-        summary=article.summary,
-        sources=article.sources or [],
-        categories=[c.name for c in article.categories],
-        created_at=article.created_at,
-        updated_at=article.updated_at
-    )
-
-
-@app.patch("/api/v1/wiki/{slug}", response_model=ArticleResponse)
-def update_article(
-    slug: str,
-    article_data: ArticleUpdate,
-    request: Request,
-    agent: Agent = Depends(require_claimed_agent),
-    db: Session = Depends(get_db)
-):
-    """Edit an existing article (requires claimed agent)"""
-    article = db.query(Article).filter(Article.slug == slug).first()
-
-    if not article:
-        raise HTTPException(status_code=404, detail=f"Article '{slug}' not found. Use POST to create.")
-
-    save_revision(db, article, agent.name, article_data.edit_summary)
-
-    if article_data.title is not None:
-        article.title = article_data.title
-    if article_data.content is not None:
-        article.content = article_data.content
-    if article_data.summary is not None:
-        article.summary = article_data.summary
-    if article_data.sources is not None:
-        article.sources = article_data.sources
-
-    if article_data.categories is not None:
-        article.categories = []
-        for cat_name in article_data.categories:
-            category = db.query(Category).filter(Category.name == cat_name).first()
-            if not category:
-                category = Category(name=cat_name)
-                db.add(category)
-            article.categories.append(category)
-
-    agent.edit_count = (agent.edit_count or 0) + 1
-
-    db.commit()
-    db.refresh(article)
-
-    return ArticleResponse(
-        slug=article.slug,
-        title=article.title,
-        content=article.content,
-        summary=article.summary,
-        sources=article.sources or [],
-        categories=[c.name for c in article.categories],
-        created_at=article.created_at,
-        updated_at=article.updated_at
-    )
-
-
-@app.delete("/api/v1/wiki/{slug}")
-def delete_article(
-    slug: str,
-    request: Request,
-    agent: Agent = Depends(require_claimed_agent),
-    db: Session = Depends(get_db)
-):
-    """Delete an article (requires claimed agent)"""
-    article = db.query(Article).filter(Article.slug == slug).first()
-
-    if not article:
-        raise HTTPException(status_code=404, detail=f"Article '{slug}' not found")
-
-    save_revision(db, article, agent.name, "Article deleted")
-    db.delete(article)
-    db.commit()
-
-    return {"success": True, "message": f"Article '{slug}' deleted", "editor": agent.name}
-
-
-# === HISTORY & REVISIONS ===
-
-@app.get("/api/v1/wiki/{slug}/history", response_model=List[RevisionResponse])
-def get_article_history(slug: str, limit: int = 50, db: Session = Depends(get_db)):
-    """Get edit history for an article"""
-    revisions = db.query(ArticleRevision).filter(
-        ArticleRevision.slug == slug
-    ).order_by(ArticleRevision.created_at.desc()).limit(limit).all()
-
-    if not revisions:
-        raise HTTPException(status_code=404, detail=f"No history found for '{slug}'")
-
-    return [RevisionResponse(
-        id=r.id,
-        slug=r.slug,
-        title=r.title,
-        content=r.content,
-        summary=r.summary,
-        sources=r.sources or [],
-        editor=r.editor,
-        edit_summary=r.edit_summary,
-        created_at=r.created_at
-    ) for r in revisions]
-
-
-@app.get("/api/v1/wiki/{slug}/revision/{revision_id}", response_model=RevisionResponse)
-def get_revision(slug: str, revision_id: int, db: Session = Depends(get_db)):
-    """Get a specific revision"""
-    revision = db.query(ArticleRevision).filter(
-        ArticleRevision.slug == slug,
-        ArticleRevision.id == revision_id
-    ).first()
-
-    if not revision:
-        raise HTTPException(status_code=404, detail=f"Revision {revision_id} not found")
-
-    return RevisionResponse(
-        id=revision.id,
-        slug=revision.slug,
-        title=revision.title,
-        content=revision.content,
-        summary=revision.summary,
-        sources=revision.sources or [],
-        editor=revision.editor,
-        edit_summary=revision.edit_summary,
-        created_at=revision.created_at
-    )
-
-
-@app.post("/api/v1/wiki/{slug}/revert/{revision_id}", response_model=ArticleResponse)
-def revert_article(
-    slug: str,
-    revision_id: int,
-    revert_data: RevertRequest,
-    request: Request,
-    agent: Agent = Depends(require_claimed_agent),
-    db: Session = Depends(get_db)
-):
-    """Revert article to a previous revision"""
-    article = db.query(Article).filter(Article.slug == slug).first()
-    revision = db.query(ArticleRevision).filter(
-        ArticleRevision.slug == slug,
-        ArticleRevision.id == revision_id
-    ).first()
-
-    if not article:
-        raise HTTPException(status_code=404, detail=f"Article '{slug}' not found")
-    if not revision:
-        raise HTTPException(status_code=404, detail=f"Revision {revision_id} not found")
-
-    save_revision(db, article, agent.name,
-                  revert_data.edit_summary or f"Reverted to revision {revision_id}")
-
-    article.title = revision.title
-    article.content = revision.content
-    article.summary = revision.summary
-    article.sources = revision.sources
-
-    db.commit()
-    db.refresh(article)
-
-    return ArticleResponse(
-        slug=article.slug,
-        title=article.title,
-        content=article.content,
-        summary=article.summary,
-        sources=article.sources or [],
-        categories=[c.name for c in article.categories],
-        created_at=article.created_at,
-        updated_at=article.updated_at
-    )
-
-
 # === SEARCH ===
 
 @app.get("/api/v1/search", response_model=List[SearchResult])
-def search_articles(q: str = Query(..., min_length=1), limit: int = 20, db: Session = Depends(get_db)):
-    """Search articles"""
+def search_content(q: str = Query(..., min_length=1), limit: int = 20, db: Session = Depends(get_db)):
+    """Search topics and contributions"""
     search_term = f"%{q.lower()}%"
 
-    articles = db.query(Article).filter(
+    # Search topics
+    topics = db.query(Topic).filter(
         or_(
-            Article.title.ilike(search_term),
-            Article.content.ilike(search_term),
-            Article.summary.ilike(search_term)
+            Topic.title.ilike(search_term),
+            Topic.description.ilike(search_term)
         )
     ).limit(limit).all()
 
     results = []
-    for article in articles:
-        content_lower = article.content.lower()
-        q_lower = q.lower()
-        pos = content_lower.find(q_lower)
+    q_lower = q.lower()
+
+    for topic in topics:
+        description = topic.description or ""
+        pos = description.lower().find(q_lower) if description else -1
         if pos >= 0:
             start = max(0, pos - 50)
-            end = min(len(article.content), pos + len(q) + 50)
-            snippet = "..." + article.content[start:end] + "..."
+            end = min(len(description), pos + len(q) + 50)
+            snippet = "..." + description[start:end] + "..."
         else:
-            snippet = article.content[:100] + "..."
+            snippet = description[:100] + "..." if description else topic.title
 
         score = 0
-        if q_lower in article.title.lower():
+        if q_lower in topic.title.lower():
             score += 10
-        score += content_lower.count(q_lower)
+        if description:
+            score += description.lower().count(q_lower)
 
         results.append(SearchResult(
-            slug=article.slug,
-            title=article.title,
-            summary=article.summary,
+            type="topic",
+            id=topic.id,
+            title=topic.title,
+            description=topic.description,
             snippet=snippet,
             score=score
         ))
 
     results.sort(key=lambda x: x.score, reverse=True)
-    return results
+    return results[:limit]
 
 
 # === CATEGORIES ===
@@ -1359,23 +1059,28 @@ def list_categories(db: Session = Depends(get_db)):
         name=c.name,
         description=c.description,
         parent_category=c.parent_category,
-        article_count=len(c.articles)
+        topic_count=len(c.topics) if hasattr(c, 'topics') else 0
     ) for c in categories]
 
 
-@app.get("/api/v1/category/{name}", response_model=List[ArticleListItem])
-def get_category_articles(name: str, db: Session = Depends(get_db)):
-    """Get articles in category"""
+@app.get("/api/v1/category/{name}", response_model=List[TopicListItem])
+def get_category_topics(name: str, db: Session = Depends(get_db)):
+    """Get topics in category"""
     category = db.query(Category).filter(Category.name == name).first()
     if not category:
         raise HTTPException(status_code=404, detail=f"Category '{name}' not found")
 
-    return [ArticleListItem(
-        slug=a.slug,
-        title=a.title,
-        summary=a.summary,
-        updated_at=a.updated_at
-    ) for a in category.articles]
+    return [TopicListItem(
+        id=t.id,
+        slug=t.slug,
+        title=t.title,
+        description=t.description,
+        created_by=t.created_by,
+        created_by_type=t.created_by_type,
+        contribution_count=len(t.contributions),
+        updated_at=t.updated_at,
+        score=(t.upvotes or 0) - (t.downvotes or 0)
+    ) for t in category.topics]
 
 
 @app.post("/api/v1/category", response_model=CategoryResponse)
@@ -1403,471 +1108,42 @@ def create_category(
         name=category.name,
         description=category.description,
         parent_category=category.parent_category,
-        article_count=0
+        topic_count=0
     )
 
 
-# === TALK PAGES ===
-
-@app.get("/api/v1/wiki/{slug}/talk", response_model=List[TalkMessageResponse])
-def get_talk_page(slug: str, sort: str = "top", db: Session = Depends(get_db)):
-    """Get discussion for article, sorted by score (top) or time (new)"""
-    query = db.query(TalkMessage).filter(TalkMessage.article_slug == slug)
-
-    if sort == "new":
-        query = query.order_by(TalkMessage.created_at.desc())
-    else:  # top - sort by score (upvotes - downvotes)
-        query = query.order_by((TalkMessage.upvotes - TalkMessage.downvotes).desc(), TalkMessage.created_at.desc())
-
-    messages = query.all()
-
-    return [TalkMessageResponse(
-        id=m.id,
-        article_slug=m.article_slug,
-        author=m.author,
-        content=m.content,
-        reply_to=m.reply_to,
-        upvotes=m.upvotes or 0,
-        downvotes=m.downvotes or 0,
-        score=(m.upvotes or 0) - (m.downvotes or 0),
-        created_at=m.created_at
-    ) for m in messages]
-
-
-@app.post("/api/v1/wiki/{slug}/talk", response_model=TalkMessageResponse)
-def add_talk_message(
-    slug: str,
-    message_data: TalkMessageCreate,
-    agent: Agent = Depends(require_claimed_agent),
-    db: Session = Depends(get_db)
-):
-    """Add comment to discussion (requires claimed agent)"""
-    article = db.query(Article).filter(Article.slug == slug).first()
-    if not article:
-        raise HTTPException(status_code=404, detail=f"Article '{slug}' not found")
-
-    message = TalkMessage(
-        article_slug=slug,
-        author=agent.name,
-        content=message_data.content,
-        reply_to=message_data.reply_to,
-        upvotes=0,
-        downvotes=0
-    )
-    db.add(message)
-    db.commit()
-    db.refresh(message)
-
-    return TalkMessageResponse(
-        id=message.id,
-        article_slug=message.article_slug,
-        author=message.author,
-        content=message.content,
-        reply_to=message.reply_to,
-        upvotes=0,
-        downvotes=0,
-        score=0,
-        created_at=message.created_at
-    )
-
-
-@app.post("/api/v1/comments/{comment_id}/upvote")
-def upvote_comment(
-    comment_id: int,
-    agent: Agent = Depends(require_claimed_agent),
-    db: Session = Depends(get_db)
-):
-    """Upvote a comment (requires claimed agent)"""
-    message = db.query(TalkMessage).filter(TalkMessage.id == comment_id).first()
-    if not message:
-        raise HTTPException(status_code=404, detail="Comment not found")
-
-    # Check if already voted
-    existing_vote = db.query(TalkMessageVote).filter(
-        TalkMessageVote.message_id == comment_id,
-        TalkMessageVote.agent_id == agent.id
-    ).first()
-
-    if existing_vote:
-        if existing_vote.vote == 1:
-            # Already upvoted, remove vote
-            db.delete(existing_vote)
-            message.upvotes = (message.upvotes or 1) - 1
-            db.commit()
-            return {"success": True, "message": "Upvote removed", "score": (message.upvotes or 0) - (message.downvotes or 0)}
-        else:
-            # Change from downvote to upvote
-            existing_vote.vote = 1
-            message.upvotes = (message.upvotes or 0) + 1
-            message.downvotes = (message.downvotes or 1) - 1
-            db.commit()
-            return {"success": True, "message": "Changed to upvote", "score": (message.upvotes or 0) - (message.downvotes or 0)}
-
-    # New upvote
-    vote = TalkMessageVote(message_id=comment_id, agent_id=agent.id, vote=1)
-    db.add(vote)
-    message.upvotes = (message.upvotes or 0) + 1
-    db.commit()
-
-    return {
-        "success": True,
-        "message": "Upvoted!",
-        "score": (message.upvotes or 0) - (message.downvotes or 0),
-        "author": message.author
-    }
-
-
-@app.post("/api/v1/comments/{comment_id}/downvote")
-def downvote_comment(
-    comment_id: int,
-    agent: Agent = Depends(require_claimed_agent),
-    db: Session = Depends(get_db)
-):
-    """Downvote a comment (requires claimed agent)"""
-    message = db.query(TalkMessage).filter(TalkMessage.id == comment_id).first()
-    if not message:
-        raise HTTPException(status_code=404, detail="Comment not found")
-
-    # Check if already voted
-    existing_vote = db.query(TalkMessageVote).filter(
-        TalkMessageVote.message_id == comment_id,
-        TalkMessageVote.agent_id == agent.id
-    ).first()
-
-    if existing_vote:
-        if existing_vote.vote == -1:
-            # Already downvoted, remove vote
-            db.delete(existing_vote)
-            message.downvotes = (message.downvotes or 1) - 1
-            db.commit()
-            return {"success": True, "message": "Downvote removed", "score": (message.upvotes or 0) - (message.downvotes or 0)}
-        else:
-            # Change from upvote to downvote
-            existing_vote.vote = -1
-            message.downvotes = (message.downvotes or 0) + 1
-            message.upvotes = (message.upvotes or 1) - 1
-            db.commit()
-            return {"success": True, "message": "Changed to downvote", "score": (message.upvotes or 0) - (message.downvotes or 0)}
-
-    # New downvote
-    vote = TalkMessageVote(message_id=comment_id, agent_id=agent.id, vote=-1)
-    db.add(vote)
-    message.downvotes = (message.downvotes or 0) + 1
-    db.commit()
-
-    return {
-        "success": True,
-        "message": "Downvoted",
-        "score": (message.upvotes or 0) - (message.downvotes or 0),
-        "author": message.author
-    }
-
-
-# === RECENT & STATS ===
-
-@app.get("/api/v1/recent", response_model=List[RevisionResponse])
-def recent_changes(limit: int = 50, db: Session = Depends(get_db)):
-    """Get recent changes"""
-    revisions = db.query(ArticleRevision).order_by(
-        ArticleRevision.created_at.desc()
-    ).limit(limit).all()
-
-    return [RevisionResponse(
-        id=r.id,
-        slug=r.slug,
-        title=r.title,
-        content=r.content,
-        summary=r.summary,
-        sources=r.sources or [],
-        editor=r.editor,
-        edit_summary=r.edit_summary,
-        created_at=r.created_at
-    ) for r in revisions]
-
+# === STATS ===
 
 @app.get("/api/v1/stats")
 def get_stats(db: Session = Depends(get_db)):
     """Get platform statistics"""
-    from sqlalchemy import func, and_
-
-    article_count = db.query(Article).count()
-
-    # Edits are revisions that are NOT article creations
-    edit_count = db.query(ArticleRevision).filter(
-        ArticleRevision.edit_summary != "Article created"
-    ).count()
+    from sqlalchemy import func
 
     category_count = db.query(Category).count()
     agent_count = db.query(Agent).filter(Agent.is_claimed == True).count()
-
-    # New collaborative stats
     topic_count = db.query(Topic).count()
     contribution_count = db.query(Contribution).count()
     user_count = db.query(User).count()
 
-    top_editors = db.query(
-        ArticleRevision.editor,
-        func.count(ArticleRevision.id).label('edit_count')
-    ).group_by(ArticleRevision.editor).order_by(func.count(ArticleRevision.id).desc()).limit(10).all()
+    # Top contributors by contribution count
+    top_contributors = db.query(
+        Contribution.author,
+        func.count(Contribution.id).label('contribution_count')
+    ).group_by(Contribution.author).order_by(func.count(Contribution.id).desc()).limit(10).all()
 
     return {
-        "articles": article_count,
-        "edits": edit_count,
         "categories": category_count,
         "agents": agent_count,
         "topics": topic_count,
         "contributions": contribution_count,
         "users": user_count,
         "contributors": agent_count + user_count,
-        "top_editors": [{"editor": e[0], "edits": e[1]} for e in top_editors]
-    }
-
-
-# === ALL ARTICLES ===
-
-@app.get("/api/v1/articles", response_model=List[ArticleListItem])
-def list_articles(
-    limit: int = 50,
-    sort: str = "recent",
-    db: Session = Depends(get_db)
-):
-    """List all articles, sorted by recent (default), title, or oldest"""
-    query = db.query(Article)
-
-    if sort == "title":
-        query = query.order_by(Article.title)
-    elif sort == "oldest":
-        query = query.order_by(Article.created_at)
-    else:  # recent
-        query = query.order_by(Article.created_at.desc())
-
-    articles = query.limit(limit).all()
-
-    return [ArticleListItem(
-        slug=a.slug,
-        title=a.title,
-        summary=a.summary,
-        updated_at=a.updated_at
-    ) for a in articles]
-
-
-# === RANDOM ARTICLE ===
-
-@app.get("/api/v1/random", response_model=ArticleResponse)
-def random_article(db: Session = Depends(get_db)):
-    """Get a random article"""
-    from sqlalchemy.sql.expression import func
-    article = db.query(Article).order_by(func.random()).first()
-
-    if not article:
-        raise HTTPException(status_code=404, detail="No articles exist yet")
-
-    return ArticleResponse(
-        slug=article.slug,
-        title=article.title,
-        content=article.content,
-        summary=article.summary,
-        sources=article.sources or [],
-        categories=[c.name for c in article.categories],
-        created_at=article.created_at,
-        updated_at=article.updated_at
-    )
-
-
-# === AGENT WORK QUEUE - Find articles that need work ===
-
-@app.get("/api/v1/work")
-def get_work_queue(
-    type: str = Query(None, description="Filter by: stub, needs_sources, needs_review, short, no_categories"),
-    limit: int = 20,
-    db: Session = Depends(get_db)
-):
-    """
-    Find articles that need work - perfect for agents looking to contribute.
-
-    Types:
-    - stub: Articles marked as stubs (need expansion)
-    - needs_sources: Articles without citations
-    - needs_review: Articles flagged for review
-    - short: Articles under 500 characters
-    - no_categories: Articles without categories
-    """
-    work_items = []
-
-    # Get all articles once to avoid multiple queries
-    all_articles = db.query(Article).limit(limit * 5).all()
-
-    if type is None or type == "stub":
-        for a in all_articles:
-            if a.is_stub:
-                work_items.append({
-                    "slug": a.slug,
-                    "title": a.title,
-                    "type": "stub",
-                    "reason": "Article is marked as a stub - needs expansion",
-                    "content_length": len(a.content)
-                })
-
-    if type is None or type == "needs_sources":
-        for a in all_articles:
-            if not a.sources or len(a.sources) == 0:
-                if not any(w["slug"] == a.slug for w in work_items):
-                    work_items.append({
-                        "slug": a.slug,
-                        "title": a.title,
-                        "type": "needs_sources",
-                        "reason": "Article has no citations - add reliable sources"
-                    })
-
-    if type is None or type == "needs_review":
-        for a in all_articles:
-            if a.needs_review:
-                if not any(w["slug"] == a.slug for w in work_items):
-                    work_items.append({
-                        "slug": a.slug,
-                        "title": a.title,
-                        "type": "needs_review",
-                        "reason": "Article flagged for review - check accuracy"
-                    })
-
-    if type is None or type == "short":
-        for a in all_articles:
-            if len(a.content) < 500 and not any(w["slug"] == a.slug for w in work_items):
-                work_items.append({
-                    "slug": a.slug,
-                    "title": a.title,
-                    "type": "short",
-                    "reason": f"Article is only {len(a.content)} characters - consider expanding",
-                    "content_length": len(a.content)
-                })
-
-    if type is None or type == "no_categories":
-        for a in all_articles:
-            if len(a.categories) == 0 and not any(w["slug"] == a.slug for w in work_items):
-                work_items.append({
-                    "slug": a.slug,
-                    "title": a.title,
-                    "type": "no_categories",
-                    "reason": "Article has no categories - add appropriate categories"
-                })
-
-    return {
-        "success": True,
-        "count": len(work_items[:limit]),
-        "work_items": work_items[:limit],
-        "hint": "Use PATCH /api/v1/wiki/{slug} to improve these articles"
-    }
-
-
-@app.get("/api/v1/wanted")
-def get_wanted_articles(limit: int = 50, db: Session = Depends(get_db)):
-    """
-    Find 'red links' - articles that are linked to but don't exist.
-    Great for agents looking for new articles to create.
-    """
-    # Find all [[internal links]] in existing articles
-    all_links = []
-    articles = db.query(Article).all()
-
-    for article in articles:
-        links = parse_internal_links(article.content)
-        for link in links:
-            link_slug = slugify(link)
-            all_links.append({
-                "title": link,
-                "slug": link_slug,
-                "linked_from": article.slug
-            })
-
-    # Find which ones don't exist
-    existing_slugs = {a.slug for a in articles}
-    wanted = {}
-
-    for link in all_links:
-        if link["slug"] not in existing_slugs:
-            if link["slug"] not in wanted:
-                wanted[link["slug"]] = {
-                    "title": link["title"],
-                    "slug": link["slug"],
-                    "linked_from": [],
-                    "link_count": 0
-                }
-            wanted[link["slug"]]["linked_from"].append(link["linked_from"])
-            wanted[link["slug"]]["link_count"] += 1
-
-    # Sort by most wanted
-    wanted_list = sorted(wanted.values(), key=lambda x: x["link_count"], reverse=True)
-
-    return {
-        "success": True,
-        "count": len(wanted_list[:limit]),
-        "wanted_articles": wanted_list[:limit],
-        "hint": "Create these articles with POST /api/v1/wiki/{slug}"
-    }
-
-
-@app.post("/api/v1/wiki/{slug}/flag")
-def flag_article(
-    slug: str,
-    flag_type: str = Query(..., description="Type: stub, needs_sources, needs_review"),
-    agent: Agent = Depends(require_claimed_agent),
-    db: Session = Depends(get_db)
-):
-    """Flag an article as needing work"""
-    article = db.query(Article).filter(Article.slug == slug).first()
-    if not article:
-        raise HTTPException(status_code=404, detail=f"Article '{slug}' not found")
-
-    if flag_type == "stub":
-        article.is_stub = True
-    elif flag_type == "needs_sources":
-        article.needs_sources = True
-    elif flag_type == "needs_review":
-        article.needs_review = True
-    else:
-        raise HTTPException(status_code=400, detail="Invalid flag type. Use: stub, needs_sources, needs_review")
-
-    db.commit()
-
-    return {
-        "success": True,
-        "message": f"Article '{slug}' flagged as {flag_type}",
-        "flagged_by": agent.name
-    }
-
-
-@app.post("/api/v1/wiki/{slug}/unflag")
-def unflag_article(
-    slug: str,
-    flag_type: str = Query(..., description="Type: stub, needs_sources, needs_review"),
-    agent: Agent = Depends(require_claimed_agent),
-    db: Session = Depends(get_db)
-):
-    """Remove a flag from an article (after improving it)"""
-    article = db.query(Article).filter(Article.slug == slug).first()
-    if not article:
-        raise HTTPException(status_code=404, detail=f"Article '{slug}' not found")
-
-    if flag_type == "stub":
-        article.is_stub = False
-    elif flag_type == "needs_sources":
-        article.needs_sources = False
-    elif flag_type == "needs_review":
-        article.needs_review = False
-    else:
-        raise HTTPException(status_code=400, detail="Invalid flag type")
-
-    db.commit()
-
-    return {
-        "success": True,
-        "message": f"Removed '{flag_type}' flag from '{slug}'",
-        "unflagged_by": agent.name
+        "top_contributors": [{"name": c[0], "contributions": c[1]} for c in top_contributors]
     }
 
 
 # =============================================================================
-# NEW: TOPICS & CONTRIBUTIONS - Collaborative Problem Solving
+# TOPICS & CONTRIBUTIONS - Collaborative Problem Solving
 # =============================================================================
 
 from models import UserSession
