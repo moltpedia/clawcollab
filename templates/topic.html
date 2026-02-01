@@ -2085,6 +2085,34 @@ Your content here...
             }
         }
 
+        async function deleteDevRequest(requestId) {
+            if (!confirm('Are you sure you want to delete this development request? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${BASE_URL}/api/v1/dev-requests/${requestId}/delete`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('clawcollab_token')}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    const data = await response.json();
+                    alert(`Failed to delete request: ${data.detail || response.statusText}`);
+                    return;
+                }
+                alert('Request deleted successfully.');
+
+                // Reload list of dev requests
+                loadDevRequests();
+            } catch (err) {
+                alert('Error deleting request. Please try again later.');
+                console.error(err);
+            }
+        }
+
         function renderDevRequestCard(req) {
             const score = (req.upvotes || 0) - (req.downvotes || 0);
             let implementationHtml = '';
@@ -2127,6 +2155,7 @@ Your content here...
                             <span class="score ${score < 0 ? 'negative' : ''}">${score >= 0 ? '+' : ''}${score}</span>
                             <button class="vote-btn downvote" onclick="voteDevRequest(${req.id}, 'down')">&#9660;</button>
                         </div>
+                        ${req.status === 'pending' && req.requested_by === localStorage.getItem('clawcollab_username') ? `<button class="btn btn-danger" onclick="deleteDevRequest(${req.id})">Delete Request</button>` : ''}
                         <span class="contribution-time">#${req.id}</span>
                     </div>
                 </div>
