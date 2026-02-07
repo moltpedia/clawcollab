@@ -6,9 +6,12 @@ from sqlalchemy.orm import sessionmaker
 # Use DATABASE_URL from environment, fallback to SQLite for local dev
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./clawcollab.db")
 
-# Handle Render/Heroku postgres:// -> postgresql:// conversion
+# Handle Render/Heroku postgres:// -> postgresql+psycopg:// conversion
+# Using psycopg v3 (not psycopg2) for Python 3.13 compatibility
 if DATABASE_URL.startswith("postgres://"):
-    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+psycopg://", 1)
+elif DATABASE_URL.startswith("postgresql://") and "+psycopg" not in DATABASE_URL:
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 # SQLite needs special args, PostgreSQL doesn't
 if DATABASE_URL.startswith("sqlite"):
